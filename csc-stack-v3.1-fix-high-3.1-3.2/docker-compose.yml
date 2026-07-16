@@ -1,0 +1,118 @@
+# Full stack CSC Dashboard v3.1 (security fix atas v3) — bisa jalan
+# BERBARENGAN dengan v3 asli tanpa bentrok: nama container, port host,
+# dan nama volume SEMUANYA sudah diubah biar unik dari v3 (lihat suffix
+# "-v31" / "_v31" di bawah).
+#
+# v3.1: migrasi database dari MySQL -> PostgreSQL, dan phpMyAdmin
+# dihapus (tidak ada GUI database bawaan lagi). Kalau perlu lihat isi
+# database secara visual, pakai DBeaver / TablePlus / psql langsung, atau
+# jalankan `docker exec -it csc-postgres-v31 psql -U $POSTGRES_USER -d $POSTGRES_DB`.
+#
+# SEBELUM JALANIN, WAJIB:
+#   cp .env.example .env                       (isi semua password acak)
+#   cp csc-backend/.env.example csc-backend/.env
+#   cp csc-dashboard/.env.example csc-dashboard/.env
+#   -> isi BACKEND_API_KEY (backend) & VITE_API_KEY (frontend) dengan
+#      NILAI YANG SAMA PERSIS dengan BACKEND_API_KEY di .env root ini.
+#
+# Jalankan dari folder ini:
+#   docker compose up -d --build
+#
+# Service yang dinyalakan (PORT BEDA DARI v3 asli, biar bisa jalan bareng):
+#   postgres    -> database, port 5443 (localhost only)
+#   whatsapp    -> GOWA, http://localhost:3020 (localhost only -- scan QR di sini)
+#   backend     -> Express API, http://localhost:3021 (localhost only)
+#   frontend    -> React/Vite dashboard, http://localhost:5193 (localhost only)
+#
+# CATATAN (security fix, Juli 2026): backend & frontend di-bind ke
+# 127.0.0.1 SAJA, sama seperti postgres & whatsapp -- tidak lagi terbuka
+# ke seluruh interface jaringan host. Kalau tim perlu akses dashboard
+# dari mesin lain (bukan dari host Docker ini langsung), pakai SSH
+# tunnel atau VPN ke host ini, contoh:
+#   ssh -L 5193:127.0.0.1:5193 -L 3021:127.0.0.1:3021 user@host-docker
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: csc-postgres-v31
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5443:5432"
+    volumes:
+      - csc_postgres_data_v31:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  whatsapp:
+    image: aldinokemal2104/go-whatsapp-web-multidevice
+    container_name: csc-whatsapp-v31
+    restart: unless-stopped
+    command: rest
+    environment:
+      # v3.2: fitur Approve/Reject -- kirim webhook tiap ada pesan masuk
+      # (termasuk balasan "Approve"/"Reject" dari user) ke backend.
+      # "backend" di sini nama service Docker di bawah (bukan localhost),
+      # port 3001 = port INTERNAL container backend (lihat service
+      # "backend" -> ports: "3021:3001", 3001 di kiri titik dua itu port
+      # dalam Docker network, 3021 cuma exposed ke host laptop kamu).
+      WHATSAPP_WEBHOOK: http://backend:3001/api/webhooks/whatsapp
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+      # Cukup dengar event pesan masuk -- tidak perlu event lain (typing,
+      # read receipt, dll) untuk fitur Approve/Reject ini.
+      WHATSAPP_WEBHOOK_EVENTS: message
+    ports:
+      - "127.0.0.1:3020:3000"
+    volumes:
+      - csc_whatsapp_storage_v31:/app/storages
+
+  backend:
+    build: ./csc-backend
+    container_name: csc-backend-v31
+    restart: unless-stopped
+    env_file:
+      - ./csc-backend/.env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      GOWA_BASE_URL: http://whatsapp:3000
+      BACKEND_API_KEY: ${BACKEND_API_KEY}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+    volumes:
+      - ./csc-backend:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:3021:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      whatsapp:
+        condition: service_started
+
+  frontend:
+    build: ./csc-dashboard
+    container_name: csc-frontend-v31
+    restart: unless-stopped
+    env_file:
+      - ./csc-dashboard/.env
+    volumes:
+      - ./csc-dashboard:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:5193:5173"
+    depends_on:
+      - backend
+
+volumes:
+  csc_postgres_data_v31:
+  csc_whatsapp_storage_v31:

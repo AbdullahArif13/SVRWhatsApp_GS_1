@@ -1,0 +1,12 @@
+.env
+csc-backend/.env
+csc-dashboard/.env
+*.env
+!*.env.example
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+.vscode/
+.idea/
