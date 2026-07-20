@@ -7,10 +7,11 @@ import Watermark from "./Watermark.jsx";
  * Shared page shell used by every route.
  *
  * @param {React.ReactNode} children - main page content
- * @param {boolean} [showWatermark] - whether to show the faint GS watermark
- *   behind the content (used for empty/placeholder states)
+ *
+ * The faint GS watermark is always shown behind the content on every page
+ * (background branding), regardless of whether the page has data or not.
  */
-export default function Layout({ children, showWatermark = true }) {
+export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
@@ -25,7 +26,7 @@ export default function Layout({ children, showWatermark = true }) {
           <Sidebar />
         </div>
         <main className="relative flex-1 overflow-y-auto">
-          {showWatermark && <Watermark />}
+          <Watermark />
           <div className="relative">{children}</div>
         </main>
       </div>

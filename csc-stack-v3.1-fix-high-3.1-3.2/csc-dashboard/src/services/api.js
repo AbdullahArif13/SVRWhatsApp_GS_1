@@ -47,6 +47,10 @@ function mapTemplate(row) {
     // icon trash di tabel, tapi baris-nya masih ada -- bisa di-restore atau
     // dihapus permanen lewat popup detail.
     isActive: row.is_active === undefined ? true : Boolean(row.is_active),
+    // v3.3: flag TERPISAH dari isActive -- true berarti template sudah
+    // "dihapus" (icon trash) dan masuk panel Database, terlepas dari
+    // status Aktif/Nonaktif-nya.
+    isDeleted: Boolean(row.is_deleted),
     // v3.2: parameter True/False fitur Approve/Reject dari halaman Create
     // Template -- true berarti penerima WAJIB membalas "Approve"/"Reject".
     requireReply: Boolean(row.require_reply),
@@ -124,9 +128,8 @@ export async function updateTemplateApi(id, { name, body, requireReply }) {
 }
 
 /**
- * "Hapus" versi ringan lewat icon trash di TABEL Templates -- template
- * cuma di-non-aktifkan (is_active = 0), baris-nya belum benar-benar
- * hilang dari database.
+ * Toggle status Aktif -> Nonaktif lewat SWITCH di TABEL Templates.
+ * Baris TETAP tampil di tabel utama, TIDAK pindah kemana-mana.
  */
 export async function deactivateTemplateApi(id) {
   const data = await apiFetch(`/templates/${id}/deactivate`, { method: "PATCH" });
@@ -134,8 +137,7 @@ export async function deactivateTemplateApi(id) {
 }
 
 /**
- * Tombol "Continuous" di popup detail -- mengaktifkan kembali template
- * yang sebelumnya di-non-aktifkan.
+ * Toggle status Nonaktif -> Aktif lewat SWITCH di TABEL Templates.
  */
 export async function activateTemplateApi(id) {
   const data = await apiFetch(`/templates/${id}/activate`, { method: "PATCH" });
@@ -143,8 +145,26 @@ export async function activateTemplateApi(id) {
 }
 
 /**
- * Tombol "Delete" DI DALAM popup detail template -- hapus permanen dari
- * database. Ini yang dimaksud "benar-benar delete" pada alur v3.
+ * "Hapus" (icon tong sampah, di tabel maupun popup detail) -- pindahkan
+ * template ke panel "Database". Baris TIDAK dihapus dari database.
+ */
+export async function softDeleteTemplateApi(id) {
+  const data = await apiFetch(`/templates/${id}/soft-delete`, { method: "PATCH" });
+  return mapTemplate(data.data);
+}
+
+/**
+ * Tombol "Gunakan Kembali" di panel Database -- kembalikan template ke
+ * tabel utama lagi.
+ */
+export async function restoreTemplateApi(id) {
+  const data = await apiFetch(`/templates/${id}/restore`, { method: "PATCH" });
+  return mapTemplate(data.data);
+}
+
+/**
+ * Hapus permanen dari database. TIDAK dipakai/dipicu dari UI manapun saat
+ * ini (disimpan untuk kebutuhan lain di masa depan).
  */
 export async function deleteTemplateApi(id) {
   return apiFetch(`/templates/${id}`, { method: "DELETE" });

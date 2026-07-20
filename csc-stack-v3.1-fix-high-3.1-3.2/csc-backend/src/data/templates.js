@@ -14,7 +14,7 @@ import { pool } from "../db.js";
  */
 export async function listTemplates() {
   const { rows } = await pool.query(
-    "SELECT id, name, body, status, is_active, require_reply, created_at FROM templates ORDER BY created_at DESC"
+    "SELECT id, name, body, status, is_active, is_deleted, require_reply, created_at FROM templates ORDER BY created_at DESC"
   );
   return rows;
 }
@@ -26,16 +26,16 @@ export async function listTemplates() {
  * PENTING: fungsi ini sekarang ASYNC (query ke database), jadi tempat yang
  * memanggilnya wajib pakai `await findTemplateByName(...)`.
  *
- * Template yang sudah di-non-aktifkan (is_active = false, lewat icon
- * "hapus" di dashboard_tamplate) SENGAJA tidak ikut dicari di sini, supaya
- * sistem permintaan (mis. Web E-Picking) tidak bisa lagi memakai template
- * yang sudah "dihapus" dari sisi dashboard, walau baris-nya belum benar-
- * benar hilang dari database.
+ * Template yang sudah di-non-aktifkan (is_active = false) ATAU sudah
+ * "dihapus"/masuk panel Database (is_deleted = true) SENGAJA tidak ikut
+ * dicari di sini, supaya sistem permintaan (mis. Web E-Picking) tidak bisa
+ * lagi memakai template semacam itu, walau baris-nya belum benar-benar
+ * hilang dari database.
  */
 export async function findTemplateByName(name) {
   if (!name) return null;
   const { rows } = await pool.query(
-    "SELECT id, name, body, status, is_active, require_reply, created_at FROM templates WHERE LOWER(name) = LOWER($1) AND is_active = true LIMIT 1",
+    "SELECT id, name, body, status, is_active, is_deleted, require_reply, created_at FROM templates WHERE LOWER(name) = LOWER($1) AND is_active = true AND is_deleted = false LIMIT 1",
     [String(name).trim()]
   );
   return rows[0] ?? null;
@@ -44,7 +44,7 @@ export async function findTemplateByName(name) {
 /** Cari template berdasarkan id (dipakai untuk edit/aktifkan/nonaktifkan/hapus). */
 export async function findTemplateById(id) {
   const { rows } = await pool.query(
-    "SELECT id, name, body, status, is_active, require_reply, created_at FROM templates WHERE id = $1 LIMIT 1",
+    "SELECT id, name, body, status, is_active, is_deleted, require_reply, created_at FROM templates WHERE id = $1 LIMIT 1",
     [id]
   );
   return rows[0] ?? null;
@@ -59,7 +59,7 @@ export async function findTemplateById(id) {
 export async function findAnyTemplateByName(name) {
   if (!name) return null;
   const { rows } = await pool.query(
-    "SELECT id, name, body, status, is_active, require_reply, created_at FROM templates WHERE LOWER(name) = LOWER($1) LIMIT 1",
+    "SELECT id, name, body, status, is_active, is_deleted, require_reply, created_at FROM templates WHERE LOWER(name) = LOWER($1) LIMIT 1",
     [String(name).trim()]
   );
   return rows[0] ?? null;
@@ -93,11 +93,11 @@ export async function updateTemplate(id, { name, body, requireReply }) {
 }
 
 /**
- * Non-aktifkan template ("hapus" versi ringan dari tombol trash di
- * dashboard_tamplate). Baris TIDAK dihapus, cuma is_active jadi false,
- * jadi template ini otomatis tidak muncul lagi di picker Chat / tidak bisa
- * dipakai template_wa via /api/send-message, tapi masih bisa dilihat dan
- * di-restore lewat popup detail-nya.
+ * Ganti status Aktif/Nonaktif template lewat toggle di TABEL Templates.
+ * Ini toggle RINGAN -- baris TETAP tampil di tabel utama baik Aktif
+ * maupun Nonaktif, TIDAK pindah kemana-mana. Beda dengan
+ * setTemplateDeleted di bawah, yang benar-benar memindahkan template ke
+ * panel "Database" (hilang dari tabel utama).
  */
 export async function setTemplateActive(id, isActive) {
   await pool.query("UPDATE templates SET is_active = $1 WHERE id = $2", [Boolean(isActive), id]);
@@ -105,9 +105,21 @@ export async function setTemplateActive(id, isActive) {
 }
 
 /**
+ * "Hapus" (icon tong sampah) -- SOFT DELETE. Baris TIDAK dihapus dari
+ * database, cuma is_deleted jadi true, jadi template ini otomatis hilang
+ * dari tabel utama & picker Chat / tidak bisa dipakai template_wa via
+ * /api/send-message, dan cuma bisa dilihat/dipulihkan lagi lewat panel
+ * "Database" (isDeleted = false lagi).
+ */
+export async function setTemplateDeleted(id, isDeleted) {
+  await pool.query("UPDATE templates SET is_deleted = $1 WHERE id = $2", [Boolean(isDeleted), id]);
+  return findTemplateById(id);
+}
+
+/**
  * Hapus permanen. HANYA dipanggil dari tombol "Delete" di dalam popup
  * detail template (dashboard_popup_tamplate) -- bukan dari tombol trash
- * di tabel list, yang cuma non-aktifkan (lihat setTemplateActive di atas).
+ * di tabel list, yang cuma soft-delete (lihat setTemplateDeleted di atas).
  */
 export async function deleteTemplateForever(id) {
   const result = await pool.query("DELETE FROM templates WHERE id = $1", [id]);

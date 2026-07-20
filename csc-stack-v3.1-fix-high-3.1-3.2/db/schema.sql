@@ -8,12 +8,19 @@ CREATE TABLE IF NOT EXISTS templates (
   name VARCHAR(255) NOT NULL UNIQUE,
   body TEXT NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'Approve',
-  -- v3: soft-delete flag. Klik icon "hapus" di dashboard_tamplate HANYA
-  -- mengubah is_active jadi false (non-aktifkan) -- BUKAN menghapus baris.
-  -- Baris betul-betul dihapus (DELETE FROM ...) hanya lewat tombol
-  -- "Delete" di dalam popup detail template (lihat handleDeleteTemplate
-  -- di messageController.js), sesuai alur dashboard_popup_tamplate.
+  -- v3.3: sekarang ada DUA flag terpisah, bukan cuma satu lagi --
+  --   is_active  -> toggle Aktif/Nonaktif biasa di tabel utama. Klik
+  --                 toggle-nya langsung ganti nilai ini, template TETAP
+  --                 tampil di tabel utama baik Aktif maupun Nonaktif.
+  --   is_deleted -> "Hapus" (icon tong sampah). Template PINDAH dari
+  --                 tabel utama ke panel "Database" -- baris-nya TIDAK
+  --                 hilang dari database, cuma disembunyikan dari tabel
+  --                 utama sampai di-restore lagi lewat panel Database.
+  -- Baris betul-betul dihapus (DELETE FROM ...) hanya lewat endpoint
+  -- DELETE /api/templates/:id (lihat handleDeleteTemplate di
+  -- messageController.js) -- TIDAK dipakai/dipicu dari UI manapun saat ini.
   is_active BOOLEAN NOT NULL DEFAULT true,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- v3.2: parameter True/False di halaman "Create Template".
   --   true  -> penerima WAJIB membalas pesan ini dengan mengetik
@@ -23,6 +30,7 @@ CREATE TABLE IF NOT EXISTS templates (
   --            default).
   require_reply BOOLEAN NOT NULL DEFAULT false
 );
+
 
 -- v3: tabel kontak. Diisi lewat 2 jalur:
 --   1. OTOMATIS, tiap ada request masuk ke POST /api/send-message (field

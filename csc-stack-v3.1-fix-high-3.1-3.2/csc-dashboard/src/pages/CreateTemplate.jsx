@@ -4,6 +4,7 @@ import Layout from "../components/Layout.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useTemplates } from "../context/TemplatesContext.jsx";
 import { extractVariableNames, buildFinalMessage, REQUIRE_REPLY_INSTRUCTION } from "../utils/templateEngine.js";
+import { formatTimestamp } from "../utils/formatDate.js";
 
 export default function CreateTemplate() {
   const navigate = useNavigate();
@@ -18,17 +19,7 @@ export default function CreateTemplate() {
   // NOT converted into positional {{1}}, {{2}}, {{3}} placeholders.
   const [variableValues, setVariableValues] = useState({});
 
-  const createdAt = useMemo(
-    () =>
-      new Date().toLocaleString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    []
-  );
+  const createdAt = useMemo(() => formatTimestamp(new Date()), []);
 
   // Every unique {{variabel}} found in the body message, in the order they
   // first appear. Adding a new {{xxx}} in the text automatically adds a new
@@ -78,10 +69,10 @@ export default function CreateTemplate() {
   }
 
   return (
-    <Layout showWatermark={false}>
+    <Layout>
       <PageHeader
-        title="Create Tamplates"
-        actionLabel={saving ? "Menyimpan..." : "Create Template"}
+        title="Buat Template"
+        actionLabel={saving ? "Menyimpan..." : "Buat Template"}
         onAction={saving ? () => {} : handleCreate}
       />
 
@@ -92,19 +83,19 @@ export default function CreateTemplate() {
       <div className="flex gap-8 px-8 pb-8">
         {/* Left: template editor */}
         <div className="flex flex-1 flex-col gap-4">
-          <h2 className="text-2xl font-semibold text-gray-900">Tamplates Information</h2>
+          <h2 className="text-2xl font-semibold text-gray-900">Informasi Template</h2>
 
           <label className="flex items-center gap-2 text-base text-gray-900">
-            <span className="font-medium">Tamplate Name :</span>
+            <span className="font-medium">Nama Template :</span>
             <input
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Create Name Template"
+              placeholder="Buat Nama Template"
               className="flex-1 border-b border-gray-300 bg-transparent px-1 py-1 text-gray-500 outline-none placeholder:text-gray-400 focus:border-brand"
             />
           </label>
 
-          <span className="text-base font-medium text-gray-900">Body Message</span>
+          <span className="text-base font-medium text-gray-900">Isi Pesan</span>
           <textarea
             value={bodyMessage}
             onChange={(e) => setBodyMessage(e.target.value)}
@@ -115,11 +106,17 @@ export default function CreateTemplate() {
           {/* v3.2: parameter True/False fitur Approve/Reject. */}
           <div className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
             <div>
-              <p className="text-base font-medium text-gray-900">Wajib Balas Approve / Reject?</p>
+              <p className="text-base font-medium text-gray-900">Aktifkan Respons Penerima</p>
               <p className="text-sm text-gray-400">
-                {requireReply
-                  ? "penerima harus balas pesan ini dengan ketik \"Approve\" atau \"Reject\"."
-                  : "penerima tidak harus membalas pesan ini."}
+                {requireReply ? (
+                  <>
+                    penerima harus balas pesan ini dengan ketik{" "}
+                    <span className="font-bold">Approve</span> atau{" "}
+                    <span className="font-bold">Reject</span>.
+                  </>
+                ) : (
+                  "penerima tidak harus membalas pesan ini."
+                )}
               </p>
             </div>
             <button
@@ -142,7 +139,7 @@ export default function CreateTemplate() {
           {requireReply && (
             <p className="-mt-2 rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-700">
               Kalimat <span className="font-semibold">"{REQUIRE_REPLY_INSTRUCTION}"</span> akan otomatis
-              ditambahkan di akhir pesan saat dikirim -- tidak perlu diketik manual di Body Message.
+              ditambahkan di akhir pesan saat dikirim -- tidak perlu diketik manual di Isi Pesan.
             </p>
           )}
         </div>
@@ -150,13 +147,13 @@ export default function CreateTemplate() {
         {/* Right: dynamic input data + preview */}
         <div className="flex w-96 shrink-0 flex-col gap-4 rounded-lg bg-gray-100 p-5">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-lg font-bold text-gray-900">Input Data</h3>
+            <h3 className="text-lg font-bold text-gray-900">Data Input</h3>
             <span className="text-sm text-gray-400">Tambah sesuai {"{{?}}"}</span>
           </div>
 
           {variableNames.length === 0 ? (
             <p className="text-sm text-gray-400">
-              Ketik variabel seperti <span className="font-mono">{"{{barang}}"}</span> di Body Message untuk
+              Ketik variabel seperti <span className="font-mono">{"{{barang}}"}</span> di Isi Pesan untuk
               menambahkan form input di sini.
             </p>
           ) : (
@@ -177,12 +174,12 @@ export default function CreateTemplate() {
             </div>
           )}
 
-          <p className="text-base font-semibold text-gray-900">Create at : {createdAt}</p>
+          <p className="text-base font-semibold text-gray-900">Dibuat pada : {createdAt}</p>
 
           <div>
-            <p className="mb-2 text-lg font-bold text-gray-900">Preview</p>
+            <p className="mb-2 text-lg font-bold text-gray-900">Pratinjau</p>
             <div className="h-72 w-full overflow-y-auto whitespace-pre-wrap rounded-md bg-white p-4 text-sm text-gray-700">
-              {preview || <span className="text-gray-400">Preview pesan akan muncul di sini.</span>}
+              {preview || <span className="text-gray-400">Pratinjau pesan akan muncul di sini.</span>}
             </div>
           </div>
         </div>

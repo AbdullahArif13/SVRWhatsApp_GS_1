@@ -3,13 +3,17 @@ import {
   handleSendMessage,
   handleGetTemplateVariables,
   handleListMessages,
+} from "../controllers/messageController.js";
+import {
   handleListTemplates,
   handleCreateTemplate,
   handleUpdateTemplate,
   handleDeactivateTemplate,
   handleActivateTemplate,
+  handleSoftDeleteTemplate,
+  handleRestoreTemplate,
   handleDeleteTemplate,
-} from "../controllers/messageController.js";
+} from "../controllers/templateController.js";
 import { handleListContacts, handleCreateContact } from "../controllers/contactController.js";
 import { sendMessageLimiter } from "../middleware/rateLimiter.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -28,14 +32,18 @@ router.get("/templates", asyncHandler(handleListTemplates));
 router.post("/templates", asyncHandler(handleCreateTemplate));
 router.get("/templates/:name/variables", asyncHandler(handleGetTemplateVariables));
 
-// v3: edit + hapus template dari dashboard_tamplate.
+// v3.3: edit + status (Aktif/Nonaktif/Dihapus) template dari dashboard_tamplate.
 // - PUT    /templates/:id             -> edit nama/body (icon folder)
-// - PATCH  /templates/:id/deactivate  -> "hapus" ringan / non-aktifkan (icon trash di tabel)
-// - PATCH  /templates/:id/activate    -> tombol "Continuous" di popup detail (restore)
-// - DELETE /templates/:id             -> tombol "Delete" DI DALAM popup detail (hapus permanen)
+// - PATCH  /templates/:id/deactivate  -> toggle Aktif -> Nonaktif (switch di tabel, TETAP tampil)
+// - PATCH  /templates/:id/activate    -> toggle Nonaktif -> Aktif (switch di tabel)
+// - PATCH  /templates/:id/soft-delete -> "Hapus" (icon trash) -- pindah ke panel Database
+// - PATCH  /templates/:id/restore     -> "Gunakan Kembali" di panel Database
+// - DELETE /templates/:id             -> hapus permanen (TIDAK dipakai dari UI manapun saat ini)
 router.put("/templates/:id", asyncHandler(handleUpdateTemplate));
 router.patch("/templates/:id/deactivate", asyncHandler(handleDeactivateTemplate));
 router.patch("/templates/:id/activate", asyncHandler(handleActivateTemplate));
+router.patch("/templates/:id/soft-delete", asyncHandler(handleSoftDeleteTemplate));
+router.patch("/templates/:id/restore", asyncHandler(handleRestoreTemplate));
 router.delete("/templates/:id", asyncHandler(handleDeleteTemplate));
 
 export default router;

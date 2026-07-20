@@ -5,6 +5,8 @@ import {
   updateTemplateApi,
   deactivateTemplateApi,
   activateTemplateApi,
+  softDeleteTemplateApi,
+  restoreTemplateApi,
   deleteTemplateApi,
 } from "../services/api.js";
 
@@ -60,8 +62,8 @@ export function TemplatesProvider({ children }) {
   }
 
   /**
-   * Icon trash di TABEL -- "hapus" ringan / non-aktifkan. Baris tetap ada
-   * (bisa di-restore atau dihapus permanen lewat popup detail-nya).
+   * Switch Aktif/Nonaktif di TABEL -- toggle ringan, baris TETAP tampil
+   * di tabel utama, tidak pindah kemana-mana.
    */
   async function deactivateTemplate(id) {
     const updated = await deactivateTemplateApi(id);
@@ -69,14 +71,33 @@ export function TemplatesProvider({ children }) {
     return updated;
   }
 
-  /** Tombol "Continuous" di popup detail -- aktifkan lagi. */
+  /** Switch Nonaktif -> Aktif di TABEL. */
   async function activateTemplate(id) {
     const updated = await activateTemplateApi(id);
     setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     return updated;
   }
 
-  /** Tombol "Delete" DI DALAM popup detail -- hapus permanen dari database. */
+  /**
+   * Icon tong sampah "Hapus" (di tabel maupun popup detail) -- pindahkan
+   * template ke panel "Database". Baris TETAP ada di state/`templates`
+   * (cuma isDeleted jadi true), Templates.jsx yang menyaringnya dari
+   * tabel utama.
+   */
+  async function softDeleteTemplate(id) {
+    const updated = await softDeleteTemplateApi(id);
+    setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    return updated;
+  }
+
+  /** Tombol "Gunakan Kembali" di panel Database -- keluarkan lagi dari Database. */
+  async function restoreTemplate(id) {
+    const updated = await restoreTemplateApi(id);
+    setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    return updated;
+  }
+
+  /** Hapus permanen dari database. TIDAK dipakai dari UI manapun saat ini. */
   async function deleteTemplateForever(id) {
     await deleteTemplateApi(id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
@@ -89,6 +110,8 @@ export function TemplatesProvider({ children }) {
       editTemplate,
       deactivateTemplate,
       activateTemplate,
+      softDeleteTemplate,
+      restoreTemplate,
       deleteTemplateForever,
       loading,
       error,

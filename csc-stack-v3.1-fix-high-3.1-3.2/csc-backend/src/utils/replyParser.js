@@ -3,8 +3,8 @@
 // (payload.replied_to_id) dengan salah satu kiriman di message_logs yang
 // require_reply = true.
 
-const APPROVE_WORDS = ["approve", "approved", "setuju", "terima", "diterima", "ya", "yes", "ok", "oke"];
-const REJECT_WORDS = ["reject", "rejected", "tolak", "ditolak", "tidak", "no"];
+const APPROVE_WORDS = ["approve", "approved", "setuju", "terima", "diterima", "ya", "yes", "ok", "oke", "y", "siap", "boleh", "sip"];
+const REJECT_WORDS = ["reject", "rejected", "tolak", "ditolak", "tidak", "no", "n"];
 
 /**
  * @param {string} text isi balasan mentah dari user

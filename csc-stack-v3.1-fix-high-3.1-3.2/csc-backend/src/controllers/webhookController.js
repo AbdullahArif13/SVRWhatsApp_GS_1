@@ -1,6 +1,28 @@
 import { addReceivedMessage } from "../data/receivedMessages.js";
 import { findMessageLogByProviderMessageId, setMessageLogReply } from "../data/messageLogs.js";
 import { parseApproveReject } from "../utils/replyParser.js";
+import { sendWhatsAppMessage } from "../services/waService.js";
+
+// Pesan balasan otomatis yang dikirim BALIK ke penerima (bukan ke sistem
+// pemanggil /api/send-message) -- murni supaya penerima tahu balasannya
+// sudah diterima/valid atau belum, tanpa perlu nunggu ditinjau manual.
+const THANK_YOU_MESSAGE =
+  "Terima kasih atas balasannya, sudah kami catat ✅";
+const INVALID_REPLY_REMINDER =
+  'Maaf, balasan kamu belum kami kenali. Mohon balas pesan sebelumnya dengan mengetik *Approve* atau *Reject* saja ya (tanpa kata tambahan lain).';
+
+/**
+ * Kirim balasan otomatis ke penerima, TANPA membuat webhook ini gagal
+ * kalau pengiriman balasannya sendiri gagal (mis. GOWA lagi down) --
+ * dicatat di log saja, webhook tetap balas 200 ke GOWA seperti biasa.
+ */
+async function sendAutoReply(noWa, message) {
+  try {
+    await sendWhatsAppMessage(noWa, message);
+  } catch (err) {
+    console.warn(`[webhook] Gagal kirim balasan otomatis ke ${noWa}: ${err.message}`);
+  }
+}
 
 /**
  * POST /api/webhooks/whatsapp
@@ -22,9 +44,17 @@ import { parseApproveReject } from "../utils/replyParser.js";
  *  4. Kalau replied_to_id cocok dengan salah satu baris message_logs YANG
  *     require_reply = true, isi balasannya (body) di-parse: harus persis
  *     "Approve" atau "Reject" (case-insensitive, lihat replyParser.js).
- *     - Cocok "Approve"/"Reject" -> message_logs.reply_status di-update.
+ *     - Cocok "Approve"/"Reject" -> message_logs.reply_status di-update,
+ *       lalu penerima dikirimi balasan ucapan terima kasih otomatis.
  *     - Tidak cocok / random text -> reply_status TETAP "menunggu", tapi
- *       tetap tercatat di received_messages (supaya bisa ditinjau manual).
+ *       tetap tercatat di received_messages (supaya bisa ditinjau manual),
+ *       dan penerima dikirimi pengingat otomatis supaya balas ulang
+ *       dengan mengetik "Approve" atau "Reject" saja.
+ *
+ * Pengiriman balasan otomatis (poin di atas) TIDAK memblokir/menggagalkan
+ * response webhook ini -- kalau pengiriman balasannya sendiri gagal (mis.
+ * GOWA down), webhook tetap balas 200 ke GOWA seperti biasa, cuma dicatat
+ * warning di log.
  */
 export async function handleWhatsAppWebhook(req, res) {
   const { event, payload } = req.body ?? {};
@@ -62,13 +92,19 @@ export async function handleWhatsAppWebhook(req, res) {
         replyStatus: decision,
         replyRawText: payload.body ?? null,
       });
+      // Balasan valid (Approve/Reject) -- kirim ucapan terima kasih supaya
+      // penerima tahu balasannya sudah masuk & tercatat.
+      await sendAutoReply(payload.from, THANK_YOU_MESSAGE);
     } else {
       // Balasan tidak dikenali sebagai Approve/Reject -- reply_status
       // dibiarkan "menunggu", tapi raw text-nya tetap dicatat supaya bisa
       // ditinjau (mis. buat dashboard menampilkan "1 balasan tidak valid").
+      // Penerima diingatkan supaya balas ulang dengan format yang benar,
+      // bukan dibiarkan menunggu tanpa penjelasan.
       console.warn(
         `[webhook] Balasan ke pesan ${repliedToId} bukan "Approve"/"Reject" yang valid: "${payload.body}"`
       );
+      await sendAutoReply(payload.from, INVALID_REPLY_REMINDER);
     }
   }
 

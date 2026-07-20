@@ -41,10 +41,10 @@ export default function AddContact() {
   }
 
   return (
-    <Layout showWatermark={!showForm || contacts.length === 0}>
+    <Layout>
       <PageHeader
-        title="Add Contacts"
-        actionLabel={!showForm ? "Add Nomber" : null}
+        title="Tambah Kontak"
+        actionLabel={!showForm ? "Tambah Nomor" : null}
         onAction={() => setShowForm(true)}
       />
 
@@ -52,7 +52,7 @@ export default function AddContact() {
         {showForm && (
           <form onSubmit={handleSubmit} className="flex w-80 shrink-0 flex-col gap-6">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">Nomber WhatsApp</h2>
+              <h2 className="text-2xl font-semibold text-gray-900">Nomor WhatsApp</h2>
               <p className="text-sm text-gray-400">
                 Nomor yang sudah didaftarkan. Kontak juga otomatis kesimpen
                 tiap ada pesan dikirim lewat sistem (no_wa &amp; nama_wa),
@@ -62,7 +62,7 @@ export default function AddContact() {
             </div>
 
             <label className="flex flex-col gap-2">
-              <span className="text-base font-medium text-gray-900">Name</span>
+              <span className="text-base font-medium text-gray-900">Nama</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -72,7 +72,7 @@ export default function AddContact() {
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-base font-medium text-gray-900">Phone</span>
+              <span className="text-base font-medium text-gray-900">Nomor Telepon</span>
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -89,7 +89,7 @@ export default function AddContact() {
               disabled={submitting}
               className="mt-4 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Menyimpan..." : "Add Nomber"}
+              {submitting ? "Menyimpan..." : "Tambah Nomor"}
             </button>
           </form>
         )}
@@ -119,10 +119,10 @@ function ContactsTable({ contacts, totalCount, loading, searchQuery, onSearchCha
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-gray-200 text-left">
-            <th className="px-5 py-3 font-semibold text-gray-900">Name</th>
+            <th className="px-5 py-3 font-semibold text-gray-900">Nama</th>
             <th className="px-5 py-3 font-semibold text-gray-900">Nomor</th>
             <th className="px-5 py-3 font-semibold text-gray-900">Asal</th>
-            <th className="px-5 py-3 font-semibold text-gray-900">Create at</th>
+            <th className="px-5 py-3 font-semibold text-gray-900">Dibuat Pada</th>
           </tr>
         </thead>
         <tbody>

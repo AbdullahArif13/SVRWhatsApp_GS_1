@@ -88,6 +88,14 @@ services:
       GOWA_BASE_URL: http://whatsapp:3000
       BACKEND_API_KEY: ${BACKEND_API_KEY}
       WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+      # Selalu izinkan localhost DAN 127.0.0.1 buat port frontend (5193),
+      # karena browser menganggap keduanya origin yang beda walau
+      # sama-sama nunjuk ke mesin ini -- ini yang bikin error CORS kalau
+      # cuma salah satu yang diizinkan. Baris ini SENGAJA menimpa nilai
+      # CORS_ORIGIN di csc-backend/.env supaya dua origin ini pasti selalu
+      # diizinkan; kalau butuh origin tambahan (mis. domain staging),
+      # tambahkan di sini juga, dipisah koma.
+      CORS_ORIGIN: "http://localhost:5193,http://127.0.0.1:5193"
     volumes:
       - ./csc-backend:/app
       - /app/node_modules
@@ -98,6 +106,12 @@ services:
         condition: service_healthy
       whatsapp:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   frontend:
     build: ./csc-dashboard
@@ -111,7 +125,14 @@ services:
     ports:
       - "127.0.0.1:5193:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   csc_postgres_data_v31:

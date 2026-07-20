@@ -48,7 +48,7 @@ export default function Chat() {
   const selectedConversation = conversations.find((c) => c.no_wa === selectedNoWa) ?? null;
 
   return (
-    <Layout showWatermark={status === "ready" && conversations.length === 0}>
+    <Layout>
       {/* h-[calc(100vh-4rem)] dipakai (bukan h-full) supaya panel chat ini
           selalu mengisi penuh sisa layar di bawah TopBar (TopBar tingginya
           4rem / h-16), jadi kotak input selalu nempel di bawah layar --
@@ -64,7 +64,7 @@ export default function Chat() {
               type="button"
               onClick={loadLogs}
               className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-brand"
-              aria-label="Refresh"
+              aria-label="Segarkan"
             >
               <RefreshCw size={15} className={status === "loading" ? "animate-spin" : ""} />
             </button>
@@ -244,7 +244,7 @@ function formatRelativeTime(isoString) {
 
 function formatDateDivider(isoString) {
   if (!isoString) return "-";
-  return new Date(isoString).toLocaleDateString("en-US", {
+  return new Date(isoString).toLocaleDateString("id-ID", {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -253,5 +253,5 @@ function formatDateDivider(isoString) {
 
 function formatTime(isoString) {
   if (!isoString) return "";
-  return new Date(isoString).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return new Date(isoString).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
