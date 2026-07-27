@@ -130,7 +130,7 @@ export default function TemplateDetailModal({ template, onClose }) {
   // panel Database, dari mana template ini bisa dipulihkan lagi kapan saja.
   async function handleSoftDelete() {
     const confirmed = window.confirm(
-      `Hapus template "${template.name}"? Template ini TIDAK akan dihapus permanen dari database -- cuma dipindah ke panel "Database" dan masih bisa dipulihkan lagi kapan saja.`
+      `Hapus template "${template.name}"? Template ini TIDAK akan dihapus permanen -- cuma dipindah ke panel "Sampah Tamplate" dan masih bisa dipulihkan lagi kapan saja.`
     );
     if (!confirmed) return;
 
@@ -228,7 +228,7 @@ export default function TemplateDetailModal({ template, onClose }) {
             type="button"
             onClick={handleSoftDelete}
             disabled={saving || deleting || toggling}
-            title="Hapus (soft delete -- template dipindah ke Database, bukan dihapus permanen)"
+            title="Hapus (soft delete -- template dipindah ke Sampah Tamplate, bukan dihapus permanen)"
             aria-label="Hapus template"
             className="flex h-10 items-center gap-2 rounded-full bg-red-100 px-4 text-sm font-semibold text-red-600 transition-colors hover:bg-red-200 disabled:opacity-50"
           >

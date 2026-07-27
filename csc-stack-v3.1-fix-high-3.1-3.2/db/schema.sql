@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS message_logs (
 CREATE INDEX IF NOT EXISTS idx_message_logs_provider_message_id
   ON message_logs (provider_message_id);
 
+-- v3.4: antrian pengiriman (lihat services/queueService.js) query baris
+-- 'antri' tiap kali backend restart buat nyusun ulang antrian di memori
+-- -- index ini biar query itu tetap cepat walau message_logs sudah gede.
+CREATE INDEX IF NOT EXISTS idx_message_logs_status
+  ON message_logs (status);
+
 -- v3.2: SETIAP pesan masuk (balasan user apa pun, bukan cuma yang cocok
 -- dengan kiriman template) dicatat di sini dulu -- log mentah/audit trail
 -- lengkap dari webhook GOWA, terlepas dari apakah berhasil dicocokkan ke

@@ -53,7 +53,11 @@ export function fillTemplate(text, values = {}) {
 // ini otomatis ditambahkan ke akhir pesan yang dikirim -- tidak perlu
 // diketik manual lagi di Body Message.
 export const REQUIRE_REPLY_INSTRUCTION =
-  'Silakan balas pesan ini dengan mengetik "Approve" atau "Reject".';
+  'Silahkan balas pesan ini dengan mereply kemudian ketik:\n' +
+  '"y" untuk *Approve*\n'+
+  '"n" untuk *Reject*\n'+
+  'Untuk Reject mohon disertakan dengan alasannya sebagai contoh berikut:\n'+
+  'n, dimohon untuk berikan alasan anda';
 
 /**
  * Mengisi {{variabel}} di body template dengan `values`, LALU menambahkan

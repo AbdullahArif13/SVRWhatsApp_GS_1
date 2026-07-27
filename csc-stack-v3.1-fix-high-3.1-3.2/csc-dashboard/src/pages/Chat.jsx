@@ -3,17 +3,6 @@ import { MessageCircle, RefreshCw, Send } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import { getMessageLogs } from "../services/api.js";
 
-/**
- * Halaman ini READ-ONLY, sama prinsipnya seperti MessageHistory.jsx --
- * bedanya di sini riwayat ditampilkan per-kontak dalam bentuk chat thread
- * (mirip tampilan WhatsApp), bukan tabel flat.
- *
- * PENTING: FrontEnd TIDAK BISA mengirim pesan dari halaman ini. Kotak
- * pesan di bawah sengaja di-disable -- pengiriman pesan cuma bisa terjadi
- * lewat sistem permintaan (mis. Web E-Picking) yang memanggil
- * POST /api/send-message langsung ke backend. Halaman ini murni buat
- * melihat isi percakapan yang sudah pernah terjadi ke tiap nomor.
- */
 export default function Chat() {
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState("loading"); // "loading" | "ready" | "error"

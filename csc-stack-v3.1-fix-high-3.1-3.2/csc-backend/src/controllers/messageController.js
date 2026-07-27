@@ -1,16 +1,10 @@
 import { findTemplateByName, findAnyTemplateByName } from "../data/templates.js";
 import { extractVariableNames, buildFinalMessage, findMissingVariables } from "../utils/templateEngine.js";
-import { sendWhatsAppMessage, extractProviderMessageId } from "../services/waService.js";
-import { addMessageLog, listMessageLogs } from "../data/messageLogs.js";
+import { listMessageLogs, findMessageLogById } from "../data/messageLogs.js";
 import { upsertContactFromMessage } from "../data/contacts.js";
+import { enqueueMessage, getQueuePosition, estimateWaitSeconds } from "../services/queueService.js";
 
-// Nomor WA: cuma digit, boleh diawali "+", panjang wajar (Indonesia &
-// internasional pada umumnya 8-15 digit).
 const PHONE_PATTERN = /^\+?[0-9]{8,15}$/;
-
-// Batas jumlah key & panjang tiap value di object "values", supaya orang
-// tidak bisa kirim payload raksasa buat DoS (isi memory/DB dengan JSON
-// yang gede banget).
 const MAX_VALUES_KEYS = 30;
 const MAX_VALUE_LENGTH = 2000;
 
@@ -37,6 +31,22 @@ function validateValuesPayload(values) {
 
 /**
  * POST /api/send-message
+ *
+ * v3.6: pesan dikirim ke GOWA LANGSUNG SAAT ITU JUGA selama rate limit
+ * (QUEUE_RATE_LIMIT_PER_MINUTE, default 30/menit) belum terlampaui --
+ * BARU masuk antrian FIFO beneran kalau jatah rate limit-nya lagi habis
+ * (lihat services/queueService.js, pola "token bucket"). Jadi kalau
+ * sistem eksternal cuma kirim sesekali/di bawah limit, pengalamannya
+ * kurang lebih SAMA kayak sebelum ada antrian (nyaris instan) -- antrian
+ * cuma "kelihatan" begitu benar-benar ada lonjakan yang melebihi limit.
+ *
+ * Response endpoint ini tetap 202 Accepted + `queue_id` di KEDUA kasus
+ * (supaya kontraknya konsisten, tidak tergantung sedang ngantri atau
+ * tidak) -- tapi field `status` di response itu cuma status AWAL
+ * ('antri' sesaat sebelum diproses). Pemanggil (sistem eksternal) tetap
+ * disarankan polling GET /api/messages/:id kalau mau tau status akhirnya
+ * ('terkirim'/'gagal') secara pasti, walau kalau lagi di bawah limit
+ * biasanya sudah berubah dalam hitungan milidetik.
  *
  * Body yang diterima BUKAN struktur statis per template, tapi:
  *   {
@@ -147,65 +157,50 @@ export async function handleSendMessage(req, res) {
     });
   }
 
-  // 4. Isi template dengan values yang dikirim, lalu kirim ke WA.
+  // 4. Isi template dengan values yang dikirim.
   //    buildFinalMessage otomatis menambahkan kalimat instruksi
   //    "...ketik Approve atau Reject" di akhir pesan kalau
   //    template.require_reply = true -- berlaku untuk template MANA PUN
   //    (tidak lagi tergantung apakah kalimat itu diketik manual di body).
   const finalMessage = buildFinalMessage(template.body, values ?? {}, template.require_reply);
 
+  // 5. v3.6: kirim SEKARANG JUGA kalau jatah rate limit masih ada (lihat
+  //    queueService.js) -- BARU beneran masuk antrian FIFO kalau jatahnya
+  //    lagi habis. Response ini tetap 202 + queue_id di kedua kasus
+  //    (kontraknya sama), tapi begitu pemanggil polling ke check_status_url,
+  //    kalau tadi "immediate", status-nya kemungkinan besar SUDAH
+  //    'terkirim'/'gagal' (bukan nyangkut lama di 'antri').
   try {
-    const result = await sendWhatsAppMessage(no_wa, finalMessage);
-    const providerMessageId = extractProviderMessageId(result);
-
-    if (template.require_reply && !providerMessageId) {
-      // Template ini butuh balasan Approve/Reject, tapi provider (GOWA)
-      // tidak mengembalikan message_id (mis. lagi mode simulasi karena
-      // GOWA_BASE_URL belum diisi) -- tanpa message_id, balasan user nanti
-      // TIDAK BISA dicocokkan ke kiriman ini sama sekali. Beri tahu di log
-      // server supaya kelihatan pas setup, tapi pengiriman tetap dianggap
-      // berhasil (pesannya memang sudah "terkirim"/tersimulasi).
-      console.warn(
-        `[handleSendMessage] Template '${template.name}' butuh balasan Approve/Reject, tapi provider tidak mengembalikan message_id -- balasan user nanti tidak akan bisa dicocokkan.`
-      );
-    }
-
-    await addMessageLog({
+    const { row, position, estimatedWaitSeconds, immediate } = await enqueueMessage({
       template_wa: template.name,
       no_wa,
       nama_wa,
       values: values ?? {},
-      final_message: finalMessage,
-      status: "terkirim",
-      providerMessageId,
+      finalMessage,
       requireReply: template.require_reply,
     });
 
-    return res.status(200).json({
+    return res.status(202).json({
       success: true,
-      message: "Pesan berhasil dikirim.",
+      message: immediate
+        ? "Pesan diterima & langsung diproses (masih di bawah rate limit)."
+        : "Pesan diterima & masuk antrian pengiriman (rate limit sedang penuh).",
+      queue_id: row.id,
+      status: row.status, // 'antri' -- cuma status AWAL, cek check_status_url buat status akhirnya
+      queue_position: position,
+      estimated_wait_seconds: estimatedWaitSeconds,
       template_used: template.name,
-      final_message: finalMessage,
       require_reply: template.require_reply,
-      provider_result: result,
+      check_status_url: `/api/messages/${row.id}`,
     });
   } catch (error) {
-    console.error("[handleSendMessage] Gagal kirim WA:", error?.message ?? error);
-
-    await addMessageLog({
-      template_wa: template.name,
-      no_wa,
-      nama_wa,
-      values: values ?? {},
-      final_message: finalMessage,
-      status: "gagal",
-      error_message: error?.message ?? "Gagal mengirim pesan ke provider WhatsApp.",
-      requireReply: template.require_reply,
-    });
-
-    return res.status(502).json({
+    if (error?.code === "QUEUE_FULL") {
+      return res.status(429).json({ success: false, message: error.message });
+    }
+    console.error("[handleSendMessage] Gagal memasukkan pesan ke antrian:", error?.message ?? error);
+    return res.status(500).json({
       success: false,
-      message: "Gagal mengirim pesan ke provider WhatsApp.",
+      message: "Gagal memasukkan pesan ke antrian.",
     });
   }
 }
@@ -223,6 +218,35 @@ export async function handleListMessages(_req, res) {
     success: true,
     data: await listMessageLogs(),
   });
+}
+
+/**
+ * GET /api/messages/:id
+ *
+ * Endpoint POLLING buat sistem eksternal -- setelah POST /api/send-message
+ * membalas 202 (masuk antrian), pemanggil kembali ke sini pakai `queue_id`
+ * yang didapat, buat tau status akhirnya sudah 'terkirim'/'gagal' atau
+ * masih 'antri'. Kalau masih 'antri', ikut dikembalikan posisi & perkiraan
+ * waktu tunggunya.
+ */
+export async function handleGetMessageStatus(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ success: false, message: "id tidak valid." });
+  }
+
+  const log = await findMessageLogById(id);
+  if (!log) {
+    return res.status(404).json({ success: false, message: `Pesan dengan id ${id} tidak ditemukan.` });
+  }
+
+  const payload = { success: true, data: log };
+  if (log.status === "antri") {
+    const position = getQueuePosition(id);
+    payload.queue_position = position;
+    payload.estimated_wait_seconds = estimateWaitSeconds(position);
+  }
+  return res.status(200).json(payload);
 }
 
 /**

@@ -1,27 +1,22 @@
-/**
- * Autentikasi sederhana berbasis API key (header `X-API-Key`).
- *
- * Ini BUKAN pengganti sistem login/SSO yang proper -- untuk aplikasi
- * internal seperti ini, tujuannya adalah mencegah orang random yang
- * nemu URL backend kamu bisa langsung nge-spam WhatsApp/nulis ke
- * database tanpa izin. Kalau nanti butuh multi-user dengan hak akses
- * berbeda-beda, ini perlu diupgrade ke JWT/session per-user.
- *
- * FAIL-CLOSED: kalau BACKEND_API_KEY tidak di-set, middleware ini
- * MENOLAK seluruh request (bukan meloloskannya). server.js sudah
- * mencegah proses ini start sama sekali tanpa BACKEND_API_KEY, jadi
- * cabang ini seharusnya tidak pernah tercapai di jalur normal --
- * pengecekan di sini murni defense-in-depth.
- *
- * Satu-satunya cara melewati proteksi ini adalah dengan sengaja
- * mengisi ALLOW_UNAUTHENTICATED_DEV=true di .env, khusus development
- * lokal. JANGAN pernah set ini di staging/production.
- */
+import { timingSafeEqual } from "node:crypto";
+
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a ?? ""), "utf8");
+  const bufB = Buffer.from(String(b ?? ""), "utf8");
+
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+
+  return timingSafeEqual(bufA, bufB);
+}
+
 export function apiKeyAuth(req, res, next) {
-  const expectedKey = process.env.BACKEND_API_KEY;
+  const dashboardKey = process.env.BACKEND_API_KEY;
+  const systemKey = process.env.SYSTEM_API_KEY;
   const allowUnauthenticatedDev = process.env.ALLOW_UNAUTHENTICATED_DEV === "true";
 
-  if (!expectedKey) {
+  if (!dashboardKey) {
     if (allowUnauthenticatedDev) {
       return next();
     }
@@ -32,9 +27,19 @@ export function apiKeyAuth(req, res, next) {
 
   const providedKey = req.header("X-API-Key");
 
-  if (!providedKey || providedKey !== expectedKey) {
+  if (!providedKey) {
     return res.status(401).json({ success: false, message: "Unauthorized." });
   }
 
-  return next();
+  if (safeEqual(providedKey, dashboardKey)) {
+    req.apiClient = "dashboard";
+    return next();
+  }
+
+  if (systemKey && safeEqual(providedKey, systemKey)) {
+    req.apiClient = "system";
+    return next();
+  }
+
+  return res.status(401).json({ success: false, message: "Unauthorized." });
 }

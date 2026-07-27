@@ -36,9 +36,9 @@ export default function TrashPanel({ onClose }) {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/icons/database-light.svg" alt="" className="h-6 w-6" />
+            <img src="/public/icon-delete-trash.png" alt="" className="h-6 w-6" />
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Database Template Terhapus</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Sampah Tamplate Template Terhapus</h3>
               <p className="text-sm text-gray-400">
                 Template yang sudah dihapus tetap tersimpan di sini -- tidak ada yang dihapus
                 permanen.

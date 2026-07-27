@@ -1,10 +1,3 @@
-/**
- * Icon check/silang untuk ActiveToggle. Bentuknya sama persis kayak
- * /icons/check-fill.svg & /icons/close-ring-fill.svg (lingkaran solid
- * dengan "lubang" berbentuk check/silang di tengahnya), tapi ditulis
- * inline pakai fill="currentColor" biar warnanya gampang diatur lewat
- * class Tailwind (bukan warna abu-abu tetap bawaan file svg-nya).
- */
 export default function StatusIcon({ variant, className }) {
   const d =
     variant === "check"

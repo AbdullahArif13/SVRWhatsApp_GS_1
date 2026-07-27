@@ -3,20 +3,6 @@ import { getContacts, createContactApi } from "../services/api.js";
 
 const ContactsContext = createContext(null);
 
-/**
- * Holds the contact list in one place so:
- * - `AddContact.jsx` can add a new contact manually
- * - `Chat.jsx` can look up a contact's phone number (`no_wa`) by
- *   `conversation.contactId` when sending a template message
- * stay in sync, mirroring the same pattern as `TemplatesContext.jsx`.
- *
- * v3: kontak sekarang disimpan di database (MySQL, jalan di Docker) lewat
- * backend, BUKAN cuma di React state lagi. Ada 2 jalur pengisian:
- *   1. Otomatis -- tiap sistem lain kirim WA lewat POST /api/send-message
- *      (field no_wa + nama_wa), backend langsung menyimpannya sebagai
- *      kontak, tidak perlu di-add manual di sini.
- *   2. Manual -- lewat form "Add Contact" (addContact di bawah).
- */
 export function ContactsProvider({ children }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);

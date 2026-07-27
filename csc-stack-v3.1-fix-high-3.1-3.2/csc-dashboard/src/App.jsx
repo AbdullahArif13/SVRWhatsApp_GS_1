@@ -6,6 +6,7 @@ import Templates from "./pages/Templates.jsx";
 import CreateTemplate from "./pages/CreateTemplate.jsx";
 import MessageHistory from "./pages/MessageHistory.jsx";
 import Chat from "./pages/Chat.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/templates/create" element={<CreateTemplate />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/history" element={<MessageHistory />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="*" element={<Navigate to="/contacts" replace />} />
         </Routes>
       </TemplatesProvider>

@@ -1,13 +1,6 @@
 import StatusIcon from "./StatusIcon.jsx";
 
-/**
- * Switch Aktif/Nonaktif, gaya "knob besar nongol keluar track" -- ijo +
- * centang kalau Aktif, merah + silang kalau Nonaktif.
- *
- * Kalau `onClick` dikasih, ini jadi tombol beneran yang langsung nulis ke
- * database begitu diklik (dipakai di tabel & di header popup detail).
- * Kalau `onClick` tidak dikasih, fallback ke tampilan statis (read-only).
- */
+
 export default function ActiveToggle({ isActive, onClick, disabled }) {
   const content = (
     <span className="inline-flex items-center gap-2">

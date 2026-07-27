@@ -29,6 +29,13 @@ export default function LogDetailModal({ log, onClose }) {
           </div>
         )}
 
+        {log.require_reply && log.reply_status === "reject" && (
+          <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-gray-800">
+            <span className="font-semibold text-red-500">Alasan Reject: </span>
+            {log.reply_reason ?? <span className="italic text-gray-400">tanpa alasan</span>}
+          </p>
+        )}
+
         {log.require_reply && log.reply_raw_text && (
           <p className="text-xs text-gray-400">
             Balasan diterima: <span className="font-mono text-gray-600">"{log.reply_raw_text}"</span>

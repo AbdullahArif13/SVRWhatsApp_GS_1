@@ -41,7 +41,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "127.0.0.1:5443:5432"
+      - "0.0.0.0:5443:5432"
     volumes:
       - csc_postgres_data_v31:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -69,7 +69,7 @@ services:
       # read receipt, dll) untuk fitur Approve/Reject ini.
       WHATSAPP_WEBHOOK_EVENTS: message
     ports:
-      - "127.0.0.1:3020:3000"
+      - "0.0.0.0:3020:3000"
     volumes:
       - csc_whatsapp_storage_v31:/app/storages
 
@@ -87,6 +87,7 @@ services:
       DB_NAME: ${POSTGRES_DB}
       GOWA_BASE_URL: http://whatsapp:3000
       BACKEND_API_KEY: ${BACKEND_API_KEY}
+      SYSTEM_API_KEY: ${SYSTEM_API_KEY}
       WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
       # Selalu izinkan localhost DAN 127.0.0.1 buat port frontend (5193),
       # karena browser menganggap keduanya origin yang beda walau
@@ -95,19 +96,19 @@ services:
       # CORS_ORIGIN di csc-backend/.env supaya dua origin ini pasti selalu
       # diizinkan; kalau butuh origin tambahan (mis. domain staging),
       # tambahkan di sini juga, dipisah koma.
-      CORS_ORIGIN: "http://localhost:5193,http://127.0.0.1:5193"
+      CORS_ORIGIN: "http://localhost:5193,http://0.0.0.0:5193"
     volumes:
       - ./csc-backend:/app
       - /app/node_modules
     ports:
-      - "127.0.0.1:3021:3001"
+      - "0.0.0.0:3021:3001"
     depends_on:
       postgres:
         condition: service_healthy
       whatsapp:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0:3001/ || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -123,12 +124,12 @@ services:
       - ./csc-dashboard:/app
       - /app/node_modules
     ports:
-      - "127.0.0.1:5193:5173"
+      - "0.0.0.0:5193:5173"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0:5173/ || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -36,38 +36,21 @@ function mapRow(row) {
   };
 }
 
-/**
- * Mencatat satu percobaan pengiriman (berhasil atau gagal) ke riwayat.
- * Dipanggil dari `messageController.js` setelah `sendWhatsAppMessage`
- * selesai (baik sukses maupun error).
- *
- * `providerMessageId` : ID pesan dari GOWA (results.message_id), kosong
- *                        kalau pengiriman gagal.
- * `requireReply`       : disalin dari templates.require_reply PADA SAAT
- *                        pesan ini dikirim (lihat catatan di db/schema.sql).
- */
-export async function addMessageLog({
+export async function addQueuedMessageLog({
   template_wa,
   no_wa,
   nama_wa,
   values,
   final_message,
-  status,
-  error_message,
-  providerMessageId = null,
   requireReply = false,
 }) {
   const recipientName = nama_wa ?? guessRecipientName(values);
-  // Kalau template ini butuh balasan Approve/Reject DAN pesannya berhasil
-  // terkirim, statusnya mulai dari "menunggu". Selain itu (tidak butuh
-  // balasan, atau gagal terkirim), "tidak_diperlukan".
-  const initialReplyStatus = requireReply && status === "terkirim" ? "menunggu" : "tidak_diperlukan";
 
   const { rows } = await pool.query(
     `INSERT INTO message_logs
        (template_wa, no_wa, nama_wa, recipient_name, values_json, final_message,
-        status, error_message, provider_message_id, require_reply, reply_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        status, require_reply, reply_status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'antri', $7, 'tidak_diperlukan')
      RETURNING *`,
     [
       template_wa,
@@ -76,14 +59,63 @@ export async function addMessageLog({
       recipientName,
       JSON.stringify(values ?? {}),
       final_message,
-      status,
-      error_message ?? null,
-      providerMessageId,
       Boolean(requireReply),
-      initialReplyStatus,
     ]
   );
   return mapRow(rows[0]);
+}
+
+/**
+ * Update baris ANTRIAN begitu queueService SELESAI mencoba mengirimnya
+ * ke GOWA (berhasil atau gagal). Dipanggil dari queueService.processNext(),
+ * BUKAN langsung dari messageController.js.
+ */
+export async function updateMessageLogResult(id, { status, providerMessageId = null, errorMessage = null }) {
+  const { rows } = await pool.query(
+    `UPDATE message_logs
+       SET status = $1::varchar,
+           provider_message_id = COALESCE($2, provider_message_id),
+           error_message = $3,
+           -- Kalau template ini butuh Approve/Reject DAN akhirnya beneran
+           -- terkirim, reply_status baru mulai "menunggu" SEKARANG --
+           -- selama masih 'antri' tadinya tetap 'tidak_diperlukan' (belum
+           -- relevan, wong belum dikirim).
+           --
+           -- CATATAN PENTING: $1 di-cast eksplisit ke ::varchar DI KEDUA
+           -- tempat pemakaiannya (assignment kolom DI ATAS, dan
+           -- perbandingan DI BAWAH ini). Tanpa cast ini, PostgreSQL akan
+           -- gagal total dengan error "inconsistent types deduced for
+           -- parameter $1" karena parameter yang sama dipakai di dua
+           -- konteks inferensi tipe yang berbeda (assignment vs
+           -- perbandingan) -- query GAGAL, status baris TIDAK PERNAH
+           -- ter-update jadi 'terkirim' walau pesannya sudah beneran
+           -- terkirim ke GOWA, dan pesan itu akan DIKIRIM ULANG tiap
+           -- backend restart (baris masih kebaca 'antri'). Kalau ada
+           -- query lain yang dibuat belakangan dengan pola serupa
+           -- (parameter sama dipakai di assignment DAN perbandingan),
+           -- WAJIB di-cast eksplisit juga seperti ini.
+           reply_status = CASE
+             WHEN require_reply AND $1::varchar = 'terkirim' THEN 'menunggu'
+             ELSE reply_status
+           END
+     WHERE id = $4
+     RETURNING *`,
+    [status, providerMessageId, errorMessage, id]
+  );
+  return mapRow(rows[0] ?? null);
+}
+
+export async function listQueuedMessageLogIds() {
+  const { rows } = await pool.query(
+    "SELECT id FROM message_logs WHERE status = 'antri' ORDER BY created_at ASC"
+  );
+  return rows.map((row) => row.id);
+}
+
+/** Satu baris riwayat berdasarkan id -- dipakai worker antrian & endpoint polling status. */
+export async function findMessageLogById(id) {
+  const { rows } = await pool.query("SELECT * FROM message_logs WHERE id = $1", [id]);
+  return mapRow(rows[0] ?? null);
 }
 
 /** Mengambil seluruh riwayat, terbaru lebih dulu. Dipakai GET /api/messages. */
@@ -92,11 +124,6 @@ export async function listMessageLogs() {
   return rows.map(mapRow);
 }
 
-/**
- * Cari satu baris kiriman berdasarkan provider_message_id (ID pesan dari
- * GOWA). Dipakai webhookController.js untuk mencocokkan `replied_to_id`
- * dari balasan user ke kiriman template mana ia membalas.
- */
 export async function findMessageLogByProviderMessageId(providerMessageId) {
   if (!providerMessageId) return null;
   const { rows } = await pool.query(
@@ -106,18 +133,13 @@ export async function findMessageLogByProviderMessageId(providerMessageId) {
   return mapRow(rows[0] ?? null);
 }
 
-/**
- * Set hasil Approve/Reject (atau balasan tidak valid, tetap "menunggu")
- * untuk satu baris kiriman. Dipanggil webhookController.js begitu balasan
- * user berhasil dicocokkan & di-parse.
- */
-export async function setMessageLogReply(id, { replyStatus, replyRawText }) {
+export async function setMessageLogReply(id, { replyStatus, replyRawText, replyReason = null }) {
   const { rows } = await pool.query(
     `UPDATE message_logs
-       SET reply_status = $1, reply_raw_text = $2, replied_at = now()
-     WHERE id = $3
+       SET reply_status = $1, reply_raw_text = $2, reply_reason = $3, replied_at = now()
+     WHERE id = $4
      RETURNING *`,
-    [replyStatus, replyRawText, id]
+    [replyStatus, replyRawText, replyReason, id]
   );
   return mapRow(rows[0] ?? null);
 }

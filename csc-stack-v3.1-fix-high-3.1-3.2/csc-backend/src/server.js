@@ -6,6 +6,7 @@ import messageRoutes from "./routes/messageRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import { apiKeyAuth } from "./middleware/apiKeyAuth.js";
 import { generalLimiter } from "./middleware/rateLimiter.js";
+import { initQueueFromDatabase } from "./services/queueService.js";
 
 const app = express();
 
@@ -106,6 +107,16 @@ if (!process.env.BACKEND_API_KEY && allowUnauthenticatedDev) {
 }
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server jalan di http://localhost:${PORT}`);
-});
+
+// v3.4: susun ulang antrian pengiriman dari baris 'antri' yang tersisa di
+// DB (kalau backend ini sebelumnya sempat mati/restart di tengah antrian)
+// SEBELUM server mulai nerima request baru.
+initQueueFromDatabase()
+  .catch((error) => {
+    console.error("[server] Gagal memuat ulang antrian dari database:", error?.message ?? error);
+  })
+  .finally(() => {
+    app.listen(PORT, () => {
+      console.log(`Server jalan di http://localhost:${PORT}`);
+    });
+  });

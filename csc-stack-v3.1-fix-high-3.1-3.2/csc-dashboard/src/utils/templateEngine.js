@@ -1,12 +1,3 @@
-// Logic ini SENGAJA dibuat identik dengan `src/utils/templateEngine.js` di
-// backend (csc-dashboard-backend), supaya preview yang tampil di frontend
-// selalu sama persis dengan pesan yang benar-benar dikirim lewat backend.
-
-/**
- * Menemukan semua {{variabel}} unik di dalam teks, urut sesuai kemunculan
- * pertama. Spasi di dalam kurung ditoleransi, mis. {{ nama }} tetap
- * dianggap variabel "nama".
- */
 export function extractVariableNames(text) {
   const seen = new Set();
   const names = [];

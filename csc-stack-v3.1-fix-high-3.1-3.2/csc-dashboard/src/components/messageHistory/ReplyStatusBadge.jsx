@@ -3,8 +3,12 @@
  *  - "tidak_diperlukan" : template ini require_reply = false -> tidak ada badge/"-".
  *  - "menunggu"          : require_reply = true, belum ada balasan valid.
  *  - "approve" / "reject": user sudah membalas dengan kata yang valid.
+ *
+ * v3.5: khusus badge "Reject", dibuat BISA DIKLIK (lihat prop onClick)
+ * buat buka popup alasan Reject-nya (kalau ada) -- lihat
+ * RejectReasonModal.jsx & MessageHistory.jsx.
  */
-export default function ReplyStatusBadge({ replyStatus }) {
+export default function ReplyStatusBadge({ replyStatus, onClick }) {
   if (!replyStatus || replyStatus === "tidak_diperlukan") {
     return <span className="text-gray-400">-</span>;
   }
@@ -18,13 +22,22 @@ export default function ReplyStatusBadge({ replyStatus }) {
     approve: "Approve",
     reject: "Reject",
   };
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        styleByStatus[replyStatus] ?? "bg-gray-100 text-gray-500"
-      }`}
-    >
-      {labelByStatus[replyStatus] ?? replyStatus}
-    </span>
-  );
+  const className = `rounded-full px-3 py-1 text-xs font-semibold ${
+    styleByStatus[replyStatus] ?? "bg-gray-100 text-gray-500"
+  }`;
+
+  if (replyStatus === "reject" && onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Lihat alasan Reject"
+        className={`${className} underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-80`}
+      >
+        {labelByStatus.reject}
+      </button>
+    );
+  }
+
+  return <span className={className}>{labelByStatus[replyStatus] ?? replyStatus}</span>;
 }

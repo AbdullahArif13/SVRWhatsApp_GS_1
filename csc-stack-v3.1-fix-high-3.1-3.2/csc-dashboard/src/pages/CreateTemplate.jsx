@@ -11,24 +11,11 @@ export default function CreateTemplate() {
   const { addTemplate } = useTemplates();
   const [templateName, setTemplateName] = useState("");
   const [bodyMessage, setBodyMessage] = useState("");
-  // v3.2: parameter True/False fitur Approve/Reject.
-  //   true  -> penerima WAJIB membalas pesan ini dengan ketik "Approve"/"Reject".
-  //   false -> penerima tidak wajib membalas apa-apa (default).
   const [requireReply, setRequireReply] = useState(false);
-  // Keyed by the variable's own name, e.g. { barang: "...", nama: "..." } --
-  // NOT converted into positional {{1}}, {{2}}, {{3}} placeholders.
   const [variableValues, setVariableValues] = useState({});
-
   const createdAt = useMemo(() => formatTimestamp(new Date()), []);
-
-  // Every unique {{variabel}} found in the body message, in the order they
-  // first appear. Adding a new {{xxx}} in the text automatically adds a new
-  // input field below; removing it removes the field again.
   const variableNames = useMemo(() => extractVariableNames(bodyMessage), [bodyMessage]);
 
-  // Keep the values object in sync with whatever variables currently exist
-  // in the body message: preserve values the user already typed, drop
-  // variables that were removed from the text, add new ones as empty.
   useEffect(() => {
     setVariableValues((prev) => {
       const next = {};
@@ -39,9 +26,6 @@ export default function CreateTemplate() {
     });
   }, [variableNames]);
 
-  // Preview ini sekarang otomatis ikut menampilkan kalimat instruksi
-  // Approve/Reject begitu toggle di bawah dinyalakan -- user tidak perlu
-  // mengetik kalimat itu sendiri di Body Message.
   const preview = useMemo(
     () => buildFinalMessage(bodyMessage, variableValues, requireReply),
     [bodyMessage, variableValues, requireReply]
@@ -56,9 +40,6 @@ export default function CreateTemplate() {
     setSaving(true);
     setSaveError(null);
     try {
-      // Saved into the shared TemplatesContext (yang manggil backend ->
-      // database MySQL di Docker), jadi begitu berhasil, template langsung
-      // muncul di Templates list page DAN di Chat page's "Use Template" picker.
       await addTemplate({ name: templateName.trim(), body: bodyMessage, requireReply });
       navigate("/templates");
     } catch (err) {

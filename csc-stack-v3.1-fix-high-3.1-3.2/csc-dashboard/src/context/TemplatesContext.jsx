@@ -12,18 +12,6 @@ import {
 
 const TemplatesContext = createContext(null);
 
-/**
- * Holds the list of WhatsApp templates in one place so:
- * - `CreateTemplate.jsx` can add a new template
- * - `Templates.jsx` (the list page) shows it
- * - `Chat.jsx` can offer it in the "Tamplate Name" picker
- * all stay in sync, since templates created on one page must be usable
- * from the Chat page's "Use Template" picker.
- *
- * Template sekarang disimpan di database (MySQL, jalan di Docker) lewat
- * backend, BUKAN cuma di React state lagi -- jadi tidak hilang tiap
- * refresh halaman / restart backend.
- */
 export function TemplatesProvider({ children }) {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,12 +66,6 @@ export function TemplatesProvider({ children }) {
     return updated;
   }
 
-  /**
-   * Icon tong sampah "Hapus" (di tabel maupun popup detail) -- pindahkan
-   * template ke panel "Database". Baris TETAP ada di state/`templates`
-   * (cuma isDeleted jadi true), Templates.jsx yang menyaringnya dari
-   * tabel utama.
-   */
   async function softDeleteTemplate(id) {
     const updated = await softDeleteTemplateApi(id);
     setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));

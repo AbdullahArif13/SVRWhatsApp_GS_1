@@ -7,9 +7,6 @@ import Watermark from "./Watermark.jsx";
  * Shared page shell used by every route.
  *
  * @param {React.ReactNode} children - main page content
- *
- * The faint GS watermark is always shown behind the content on every page
- * (background branding), regardless of whether the page has data or not.
  */
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
