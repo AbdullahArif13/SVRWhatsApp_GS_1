@@ -1,0 +1,85 @@
+{
+  "info": {
+    "name": "CSC Backend - System Integration",
+    "description": "Koleksi khusus buat sistem eksternal yang manggil csc-backend langsung (server-to-server), pake SYSTEM_API_KEY -- terpisah dari BACKEND_API_KEY yang dipakai dashboard. v3.4: Send Message sekarang ASYNC -- balasnya 202 + queue_id, BUKAN langsung 200 terkirim. Cek hasil akhirnya lewat request 'Cek Status Pesan' di bawah. Lihat csc-backend/src/services/queueService.js.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{system_api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://10.19.101.126:3021/api", "description": "IP LAN server ini. Cuma bisa diakses dari mesin yang satu jaringan LAN (atau VPN ke jaringan itu) -- bukan localhost lagi karena file ini dipakai untuk test dari komputer lain." },
+    { "key": "system_api_key", "value": "KehidupanMalam" }
+  ],
+  "item": [
+    {
+      "name": "Send Message",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template_wa\": \"spct_order\",\n  \"no_wa\": \"089189182\",\n  \"nama_wa\": \"Bapak Fauzi\",\n  \"values\": {\n    \"nama\": \"Abdullah\",\n    \"nomor_request\": \"CSC/01\",\n    \"requester\": \"Masker\",\n    \"item\": \"N96\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/send-message",
+          "host": ["{{base_url}}"],
+          "path": ["send-message"]
+        },
+        "description": "template_wa, no_wa, nama_wa wajib diisi. Isi 'values' menyesuaikan {{placeholder}} yang ada di body template tujuan -- cek pake request 'Get Template Variables' di bawah kalau belum tau.\n\nv3.4: response-nya SEKARANG 202 (bukan 200) + 'queue_id' -- pesan baru MASUK ANTRIAN, belum tentu langsung terkirim. Pakai queue_id itu di request 'Cek Status Pesan' buat tau hasil akhirnya."
+      }
+    },
+    {
+      "name": "Send Message ke Grup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"template_wa\": \"bodr_approval_notification\",\n  \"no_wa\": \"120363399064305127@g.us\",\n  \"nama_wa\": \"Grup IT GS Tetangga\",\n  \"values\": {\n    \"name\": \"Tim IT GS Tetangga\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/send-message",
+          "host": ["{{base_url}}"],
+          "path": ["send-message"]
+        },
+        "description": "v3.10: PERSIS request 'Send Message' biasa, cuma field `no_wa` diisi JID GRUP (bukan nomor HP) -- formatnya `\"<id>@g.us\"`, contoh: `\"120363399064305127@g.us\"`. Grup lama kadang berformat `\"<nomor_pembuat>-<timestamp>@g.us\"` -- keduanya didukung (lihat GROUP_JID_PATTERN di messageController.js).\n\n### Cara dapat JID grup\nJID grup TIDAK ada endpoint-nya di backend ini -- ambil LANGSUNG dari GOWA (device WA harus SUDAH jadi anggota grup itu):\n```\nGET http://127.0.0.1:3020/user/my/groups\n```\n(cuma bisa diakses dari SERVER tempat GOWA jalan -- port 3020 localhost-only, lihat docker-compose.yml). Responnya daftar semua grup yang device WA ini ikuti, tiap grup ada field `\"JID\"` (contoh: `\"120363399064305127@g.us\"`) dan `\"Name\"` -- itu yang dipakai di `no_wa`.\n\n### Beda perilaku dibanding kirim ke nomor perorangan\n- **`nama_wa` tetap wajib diisi** (bebas, cuma label buat Riwayat Pengiriman) TAPI **TIDAK otomatis kesimpen ke tabel kontak** -- grup bukan kontak personal.\n- Validasi `values` & placeholder template SAMA PERSIS seperti kirim ke nomor biasa.\n- **Device WA WAJIB sudah jadi anggota grup itu duluan** -- backend/GOWA tidak bisa \"invite diri sendiri\" ke grup baru lewat API ini.\n- Rate limit & antrian (`QUEUE_RATE_LIMIT_PER_MINUTE`) berlaku SAMA seperti biasa, TAPI cooldown per-nomor (`SEND_COOLDOWN_PER_NUMBER_MS`) dihitung per JID grup itu sendiri (grup dianggap 1 \"nomor\" tersendiri).\n\n### Soal 429 \"reach-out timelock\"\nKarena device WA sudah jadi anggota grup (bukan \"cold message\" ke kontak baru), kirim ke grup UMUMNYA TIDAK kena restriksi anti-spam WhatsApp (`WA_REACHOUT_TIMELOCK` / error 463) seperti yang bisa terjadi kalau kirim ke NOMOR PERORANGAN yang belum pernah chat sama sekali dengan device ini."
+      }
+    },
+    {
+      "name": "Cek Status Pesan",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/messages/1",
+          "host": ["{{base_url}}"],
+          "path": ["messages", "1"]
+        },
+        "description": "Ganti '1' di path dengan queue_id yang didapat dari response Send Message. status di response bisa 'antri' (masih nunggu giliran, sertakan queue_position & estimated_wait_seconds), 'terkirim', atau 'gagal'."
+      }
+    },
+    {
+      "name": "Get Template Variables",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/templates/spct_order/variables",
+          "host": ["{{base_url}}"],
+          "path": ["templates", "spct_order", "variables"]
+        },
+        "description": "Ganti 'spct_order' di path dengan nama template yang mau dicek. Balikin daftar {{placeholder}} yang wajib diisi di 'values' pas Send Message."
+      }
+    }
+  ]
+}
