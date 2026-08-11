@@ -114,18 +114,24 @@ export async function updateMessageLogResult(id, { status, providerMessageId = n
 }
 
 /**
- * ID baris yang masih berstatus 'antri', urut dari yang paling lama.
- * Dipakai queueService.initQueueFromDatabase() untuk menyusun ulang
- * antrian di memori pas backend baru nyala lagi (mis. habis restart),
- * supaya pesan yang belum sempat diproses sebelumnya tidak hilang begitu
- * saja -- datanya kan sudah aman di DB, cuma "urutan antrian" di RAM-nya
- * yang perlu disusun ulang.
+ * { id, template_wa } baris yang masih berstatus 'antri', urut dari yang
+ * paling lama. Dipakai queueService.initQueueFromDatabase() untuk
+ * menyusun ulang antrian di memori pas backend baru nyala lagi (mis.
+ * habis restart), supaya pesan yang belum sempat diproses sebelumnya
+ * tidak hilang begitu saja -- datanya kan sudah aman di DB, cuma "urutan
+ * antrian" di RAM-nya yang perlu disusun ulang.
+ *
+ * v3.11: ikut membawa `template_wa` (bukan cuma `id` seperti sebelumnya)
+ * karena queueService.js sekarang perlu tahu template dari tiap item
+ * antrian untuk menerapkan rate limit PER TEMPLATE (lihat komentar
+ * TEMPLATE_RATE_LIMIT_PER_MINUTE di queueService.js) tanpa harus query DB
+ * lagi satu-satu pas menyusun ulang antrian.
  */
-export async function listQueuedMessageLogIds() {
+export async function listQueuedMessageLogQueueEntries() {
   const { rows } = await pool.query(
-    "SELECT id FROM message_logs WHERE status = 'antri' ORDER BY created_at ASC"
+    "SELECT id, template_wa FROM message_logs WHERE status = 'antri' ORDER BY created_at ASC"
   );
-  return rows.map((row) => row.id);
+  return rows.map((row) => ({ id: row.id, template_wa: row.template_wa }));
 }
 
 /** Satu baris riwayat berdasarkan id -- dipakai worker antrian & endpoint polling status. */

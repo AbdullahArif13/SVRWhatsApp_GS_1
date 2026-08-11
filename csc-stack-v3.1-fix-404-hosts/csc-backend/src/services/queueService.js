@@ -2,7 +2,7 @@ import { sendWhatsAppMessage, sendWhatsAppImage, extractProviderMessageId, norma
 import {
   addQueuedMessageLog,
   updateMessageLogResult,
-  listQueuedMessageLogIds,
+  listQueuedMessageLogQueueEntries,
   findMessageLogById,
 } from "../data/messageLogs.js";
 
@@ -41,13 +41,68 @@ import {
 // pembatasan yang diminta ("gak lebih dari 30 send message dalam 1
 // menit"). Bisa diubah lewat .env tanpa ubah kode.
 const RATE_LIMIT_PER_MINUTE = Math.max(1, Number(process.env.QUEUE_RATE_LIMIT_PER_MINUTE) || 30);
-const INTERVAL_MS = Math.ceil(30_000 / RATE_LIMIT_PER_MINUTE);
+const INTERVAL_MS = Math.ceil(60_000 / RATE_LIMIT_PER_MINUTE);
 
 // Batas atas ukuran antrian FIFO (bukan throttle normal, cuma jaga-jaga
 // anti-DoS supaya kalau ada yang sengaja ngirim jutaan request
 // sekaligus, memori server tidak ikut jebol). "Ribuan" dari kasus
 // normal jauh di bawah ini.
 const MAX_QUEUE_LENGTH = Math.max(1, Number(process.env.QUEUE_MAX_LENGTH) || 10_000);
+
+/**
+ * v3.11 -- rate limit TAMBAHAN per TEMPLATE, di ATAS (bukan menggantikan)
+ * RATE_LIMIT_PER_MINUTE (30/menit) di atas.
+ *
+ * Masalah yang diselesaikan: RATE_LIMIT_PER_MINUTE cuma membatasi TOTAL
+ * pesan keluar per menit, tidak peduli itu tersebar di banyak template
+ * atau semuanya numpuk di SATU template. Kejadian broadcast dari API Key
+ * eksternal "KehidupanMalam" nunjukkin lubangnya: satu template bisa
+ * "menghabiskan" jatah 30/menit itu sendirian dalam hitungan detik kalau
+ * memang di bawah limit total, dan pola kirim yang super rapat ke SATU
+ * template kayak gitu yang justru rawan kena deteksi spam/banned di sisi
+ * WhatsApp -- bukan cuma soal total volume.
+ *
+ * Solusinya DUA lapis rate limit baru, keduanya token bucket juga (pola
+ * sama seperti RATE_LIMIT_PER_MINUTE), dan keduanya SAMA SEKALI TIDAK
+ * mengubah/mengurangi jatah `tokens` (30/menit) yang sudah ada -- cuma
+ * jadi SYARAT TAMBAHAN sebelum sebuah pesan boleh benar-benar diproses:
+ *
+ *   TEMPLATE_RATE_LIMIT_PER_MINUTE (default 5)
+ *     -- jatah keluar per MENIT untuk MASING-MASING template, dihitung
+ *     terpisah per nama template. Bucket-nya dibuat OTOMATIS begitu
+ *     template itu pertama kali dipakai kirim (lihat ensureTemplateBucket)
+ *     -- jadi template baru yang ditambahkan lewat dashboard LANGSUNG
+ *     dapat jatah 5/menit sendiri tanpa perlu ubah kode/konfigurasi apa
+ *     pun.
+ *
+ *   TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE (default 15)
+ *     -- jatah keluar per menit yang DIBAGI BERSAMA oleh SEMUA template
+ *     (satu bucket tunggal, bukan per-nama). Ini jaring pengaman kalau
+ *     banyak template BERBEDA dipakai bersamaan -- masing-masing di bawah
+ *     jatah 5/menit-nya sendiri, tapi totalnya tetap bisa meledak kalau
+ *     tidak dibatasi lagi di sini. 15 sengaja diset di BAWAH 30 (jatah
+ *     total pengiriman) supaya selalu ada sisa jatah 30/menit itu buat
+ *     pesan-pesan NON-template-flood (spt balasan/kiriman normal lain)
+ *     -- lihat juga catatan "tidak mengenai queue 30" di bawah.
+ *
+ * Sebuah pesan baru BENAR-BENAR dikirim kalau SEMUA syarat token
+ * terpenuhi sekaligus: tokens (30/menit) > 0, jatah template-nya sendiri
+ * (5/menit) > 0, DAN jatah global-template (15/menit) > 0. Kalau salah
+ * satu belum terpenuhi, pesan itu TETAP di antrian `queue` (bukan
+ * ditolak) menunggu jatah yang kurang itu terisi ulang -- dan SELAMA
+ * menunggu itu, `tokens` (30/menit) TIDAK ikut berkurang/kepakai, jadi
+ * pesan dari template lain yang jatahnya masih ada tetap bisa
+ * "menyalip"/diproses duluan (lihat drainQueue) -- satu template yang lagi
+ * kena limitnya sendiri tidak bikin antrian template LAIN ikut macet.
+ */
+const TEMPLATE_RATE_LIMIT_PER_MINUTE = Math.max(1, Number(process.env.TEMPLATE_RATE_LIMIT_PER_MINUTE) || 5);
+const TEMPLATE_INTERVAL_MS = Math.ceil(60_000 / TEMPLATE_RATE_LIMIT_PER_MINUTE);
+
+const TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE = Math.max(
+  1,
+  Number(process.env.TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE) || 15
+);
+const TEMPLATE_GLOBAL_INTERVAL_MS = Math.ceil(60_000 / TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE);
 
 /**
  * v3.9 -- pengerasan pola kirim supaya tidak gampang dibedakan dari
@@ -85,9 +140,25 @@ const CIRCUIT_COOLDOWN_MS = Math.max(1_000, Number(process.env.CIRCUIT_COOLDOWN_
  * RATE_LIMIT_PER_MINUTE tanpa nunggu apa-apa. */
 let tokens = RATE_LIMIT_PER_MINUTE;
 
-/** @type {number[]} id message_logs yang BENERAN nunggu giliran (jatah lagi habis), FIFO. */
+/**
+ * @type {{ id: number, template_wa: string }[]} item message_logs yang
+ * BENERAN nunggu giliran (jatah salah satu bucket lagi habis), FIFO
+ * berdasarkan urutan masuk. Ikut menyimpan `template_wa` (bukan cuma id)
+ * supaya drainQueue() bisa cek jatah TEMPLATE-nya tanpa query DB dulu.
+ */
 let queue = [];
 let refillTimer = null;
+
+/** Jatah kirim tersisa SAAT INI per nama template (key = nama template),
+ * mulai penuh (TEMPLATE_RATE_LIMIT_PER_MINUTE) begitu template itu
+ * pertama kali kepakai. */
+const templateTokens = new Map();
+/** setInterval id per nama template (satu refill timer sendiri-sendiri per template). */
+const templateRefillTimers = new Map();
+
+/** Jatah kirim tersisa SAAT INI yang dibagi bersama SEMUA template. */
+let templateGlobalTokens = TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE;
+let templateGlobalRefillTimer = null;
 
 // Circuit breaker: state murni in-memory (reset tiap restart, itu wajar --
 // restart otomatis bikin jeda pengiriman juga).
@@ -133,13 +204,57 @@ export function getCircuitBreakerStatus() {
   return { open, resumesAt: open ? new Date(circuitOpenUntil).toISOString() : null };
 }
 
+/**
+ * Pastikan bucket + refill timer untuk SATU nama template sudah ada.
+ * Dipanggil lazy (bukan didaftarkan manual di kode) tiap kali template itu
+ * dipakai kirim, supaya template BARU yang ditambahkan lewat dashboard
+ * otomatis dapat jatah 5/menit sendiri tanpa perlu sentuh kode ini lagi.
+ */
+function ensureTemplateBucket(templateName) {
+  if (!templateTokens.has(templateName)) {
+    templateTokens.set(templateName, TEMPLATE_RATE_LIMIT_PER_MINUTE);
+  }
+  if (!templateRefillTimers.has(templateName)) {
+    const timer = setInterval(() => {
+      const current = templateTokens.get(templateName) ?? 0;
+      templateTokens.set(templateName, Math.min(TEMPLATE_RATE_LIMIT_PER_MINUTE, current + 1));
+      drainQueue(); // jatah template ini keisi lagi -- coba proses backlog yang nunggu jatah ini
+    }, TEMPLATE_INTERVAL_MS);
+    // unref supaya timer ini tidak mencegah proses Node keluar (mis. pas testing/shutdown)
+    timer.unref?.();
+    templateRefillTimers.set(templateName, timer);
+  }
+}
+
+function ensureTemplateGlobalRefillTimerRunning() {
+  if (templateGlobalRefillTimer) return;
+  templateGlobalRefillTimer = setInterval(() => {
+    templateGlobalTokens = Math.min(TEMPLATE_GLOBAL_RATE_LIMIT_PER_MINUTE, templateGlobalTokens + 1);
+    drainQueue(); // jatah global-template keisi lagi -- coba proses backlog
+  }, TEMPLATE_GLOBAL_INTERVAL_MS);
+  templateGlobalRefillTimer.unref?.();
+}
+
+/** True kalau template ini MASIH punya jatah (baik jatah sendiri 5/menit MAUPUN jatah global-template 15/menit). */
+function hasTemplateQuota(templateName) {
+  ensureTemplateBucket(templateName);
+  ensureTemplateGlobalRefillTimerRunning();
+  return (templateTokens.get(templateName) ?? 0) > 0 && templateGlobalTokens > 0;
+}
+
+/** Pakai 1 jatah dari KEDUA bucket template (punya sendiri + global-template) sekaligus. */
+function consumeTemplateQuota(templateName) {
+  templateTokens.set(templateName, (templateTokens.get(templateName) ?? 0) - 1);
+  templateGlobalTokens -= 1;
+}
+
 export function getQueueLength() {
   return queue.length;
 }
 
 /** Posisi id ini di antrian (1 = berikutnya diproses), null kalau sudah tidak di antrian lagi. */
 export function getQueuePosition(id) {
-  const index = queue.indexOf(id);
+  const index = queue.findIndex((item) => item.id === id);
   return index === -1 ? null : index + 1;
 }
 
@@ -182,18 +297,25 @@ export async function enqueueMessage({ template_wa, no_wa, nama_wa, values, fina
 
   ensureRefillTimerRunning();
 
-  if (tokens > 0 && !isCircuitOpen()) {
-    // Masih ada jatah DAN circuit breaker belum aktif -- KIRIM SEKARANG,
-    // tidak masuk antrian sama sekali.
+  // v3.11: sekarang ada TIGA syarat yang harus SEMUA terpenuhi biar boleh
+  // kirim sekarang juga -- jatah total (30/menit) MAUPUN jatah template
+  // ini sendiri (5/menit) MAUPUN jatah global-template (15/menit), lihat
+  // komentar TEMPLATE_RATE_LIMIT_PER_MINUTE di atas file ini.
+  if (tokens > 0 && !isCircuitOpen() && hasTemplateQuota(template_wa)) {
+    // Semua jatah masih ada DAN circuit breaker belum aktif -- KIRIM
+    // SEKARANG, tidak masuk antrian sama sekali.
     tokens -= 1;
+    consumeTemplateQuota(template_wa);
     processOne(row.id).catch((error) => {
       console.error(`[queueService] Error tak terduga memproses id=${row.id}:`, error?.message ?? error);
     });
     return { row, position: 0, estimatedWaitSeconds: 0, immediate: true };
   }
 
-  // Jatah lagi habis -- BARU beneran masuk antrian, nunggu jatah keisi lagi.
-  queue.push(row.id);
+  // Salah satu jatah lagi habis (bisa jatah total, jatah template ini
+  // sendiri, atau jatah global-template) -- BARU beneran masuk antrian,
+  // nunggu jatah yang kurang itu keisi lagi.
+  queue.push({ id: row.id, template_wa });
   const position = queue.length;
   return { row, position, estimatedWaitSeconds: estimateWaitSeconds(position), immediate: false };
 }
@@ -206,14 +328,37 @@ function ensureRefillTimerRunning() {
   }, INTERVAL_MS);
 }
 
-/** Selama masih ada jatah, masih ada backlog, DAN circuit breaker belum aktif, proses terus. */
+/**
+ * Selama masih ada jatah TOTAL (`tokens`), masih ada backlog, DAN circuit
+ * breaker belum aktif, proses terus.
+ *
+ * v3.11: TIDAK LAGI selalu ambil item paling depan (`queue.shift()`)
+ * begitu saja -- sekarang di-SCAN dari depan, item pertama yang jatah
+ * TEMPLATE-nya (5/menit sendiri + 15/menit global-template) masih ada
+ * itu yang diproses & dikeluarkan dari antrian, walau posisinya bukan
+ * paling depan. Ini supaya SATU template yang lagi kena limitnya sendiri
+ * (mis. broadcast dari satu API Key eksternal ke satu template) TIDAK
+ * bikin pesan-pesan template LAIN yang masuk belakangan ikut ketahan --
+ * `tokens` (30/menit) sama sekali tidak berkurang selama scan ini kalau
+ * memang belum ada item yang lolos syarat template-nya.
+ */
 function drainQueue() {
-  while (tokens > 0 && queue.length > 0 && !isCircuitOpen()) {
-    tokens -= 1;
-    const id = queue.shift();
-    processOne(id).catch((error) => {
-      console.error(`[queueService] Error tak terduga memproses id=${id}:`, error?.message ?? error);
-    });
+  if (isCircuitOpen()) return;
+  let i = 0;
+  while (tokens > 0 && i < queue.length) {
+    const item = queue[i];
+    if (hasTemplateQuota(item.template_wa)) {
+      queue.splice(i, 1);
+      tokens -= 1;
+      consumeTemplateQuota(item.template_wa);
+      processOne(item.id).catch((error) => {
+        console.error(`[queueService] Error tak terduga memproses id=${item.id}:`, error?.message ?? error);
+      });
+      // Jangan increment i -- item di posisi i sudah dibuang, item
+      // berikutnya otomatis "geser" ke posisi i.
+    } else {
+      i += 1; // template ini lagi habis jatah, coba item berikutnya di antrian
+    }
   }
 }
 
@@ -250,7 +395,7 @@ async function processOne(id) {
   // kirim. Kalau ternyata sudah aktif, taruh lagi id ini di depan antrian
   // (BUKAN digagalkan) supaya otomatis dicoba lagi begitu jeda berakhir.
   if (isCircuitOpen()) {
-    queue.unshift(id);
+    queue.unshift({ id, template_wa: row.template_wa });
     return;
   }
 
@@ -319,13 +464,14 @@ async function processOne(id) {
  * yang tersedia (lewat drainQueue()), bukan dites nunggu dari nol lagi.
  */
 export async function initQueueFromDatabase() {
-  const pendingIds = await listQueuedMessageLogIds();
-  queue = [...pendingIds, ...queue];
-  if (pendingIds.length > 0) {
+  const pendingEntries = await listQueuedMessageLogQueueEntries();
+  queue = [...pendingEntries, ...queue];
+  if (pendingEntries.length > 0) {
     console.log(
-      `[queueService] Memuat ulang ${pendingIds.length} pesan yang masih 'antri' dari sebelum restart terakhir.`
+      `[queueService] Memuat ulang ${pendingEntries.length} pesan yang masih 'antri' dari sebelum restart terakhir.`
     );
   }
   ensureRefillTimerRunning();
+  ensureTemplateGlobalRefillTimerRunning();
   drainQueue();
 }
