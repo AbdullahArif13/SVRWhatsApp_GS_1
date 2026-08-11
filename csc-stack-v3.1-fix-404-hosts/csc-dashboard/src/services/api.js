@@ -304,7 +304,11 @@ export async function getUserActivityApi(userId) {
  * Dashboard analitik interaktif (v3.11) -- 5 dataset grafik sekaligus.
  * `granularity`: "daily" | "monthly" | "yearly".
  */
-export async function getAnalyticsOverviewApi(granularity = "daily") {
-  const data = await apiFetch(`/analytics/overview?granularity=${encodeURIComponent(granularity)}`);
+export async function getAnalyticsOverviewApi(granularity = "daily", { day, month, year } = {}) {
+  const params = new URLSearchParams({ granularity });
+  if (granularity === "daily" && day) params.set("day", day);
+  if (granularity === "monthly" && month) params.set("month", month);
+  if (granularity === "yearly" && year) params.set("year", year);
+  const data = await apiFetch(`/analytics/overview?${params.toString()}`);
   return data?.data ?? null;
 }

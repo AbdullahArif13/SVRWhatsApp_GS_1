@@ -19,6 +19,7 @@ import {
 } from "recharts";
 import Layout from "../components/Layout.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import FilterSelect from "../components/FilterSelect.jsx";
 import { getAnalyticsOverviewApi } from "../services/api.js";
 import { useContacts } from "../context/ContactsContext.jsx";
 import { useTemplates } from "../context/TemplatesContext.jsx";
@@ -38,34 +39,98 @@ const GRANULARITY_OPTIONS = [
   { value: "yearly", label: "Tahunan" },
 ];
 
-/** Format label sumbu-X grafik tren sesuai granularity yang dipilih. */
-function formatBucketLabel(isoDate, granularity) {
-  const date = new Date(isoDate);
-  if (granularity === "yearly") return date.getUTCFullYear().toString();
-  if (granularity === "monthly") return date.toLocaleDateString("id-ID", { month: "short", year: "numeric", timeZone: "UTC" });
-  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
+const MONTH_OPTIONS = [
+  { value: "1", label: "Januari" },
+  { value: "2", label: "Februari" },
+  { value: "3", label: "Maret" },
+  { value: "4", label: "April" },
+  { value: "5", label: "Mei" },
+  { value: "6", label: "Juni" },
+  { value: "7", label: "Juli" },
+  { value: "8", label: "Agustus" },
+  { value: "9", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+];
+
+const CURRENT_YEAR = new Date().getUTCFullYear();
+// Dropdown tahun: 5 tahun ke belakang dari tahun berjalan sampai tahun berjalan.
+const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => {
+  const year = CURRENT_YEAR - i;
+  return { value: String(year), label: String(year) };
+});
+
+/** ISO date (YYYY-MM-DD, basis UTC) hari ini -- dipakai sebagai default & batas
+ *  atas date-picker "Harian" (gak boleh pilih tanggal di masa depan). */
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** ISO date (YYYY-MM-DD) tanggal 1 bulan berjalan -- batas bawah date-picker
+ *  "Harian", supaya user cuma bisa milih tanggal DI BULAN INI (gak nyebrang
+ *  ke bulan/tahun lain). */
+function monthStartIso() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
 }
 
 /**
- * v3.11: Dashboard analitik interaktif -- dipakai SEMUA role (termasuk
+ * Format label sumbu-X grafik tren sesuai granularity yang dipilih:
+ *   - daily   : jam:menit slot 30 menit-an, misal "08.30" (tanggal pilihan)
+ *   - monthly : nama hari + tanggal, misal "Sen, 1" (bulan yang dipilih)
+ *   - yearly  : nama bulan singkat, misal "Jan" (tahun yang dipilih)
+ */
+function formatBucketLabel(isoDate, granularity) {
+  const date = new Date(isoDate);
+  if (granularity === "yearly") return date.toLocaleDateString("id-ID", { month: "short", timeZone: "UTC" });
+  if (granularity === "monthly") {
+    return date.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", timeZone: "UTC" });
+  }
+  // daily
+  const hh = date.getUTCHours().toString().padStart(2, "0");
+  const mm = date.getUTCMinutes().toString().padStart(2, "0");
+  return `${hh}.${mm}`;
+}
+
+/**
+ * v3.13: Dashboard analitik interaktif -- dipakai SEMUA role (termasuk
  * 'pengguna'/read-only, yang cuma boleh akses halaman ini). Datanya dari
  * GET /api/analytics/overview (lihat services/api.js) -- endpoint yang
  * SAMA juga bisa dipakai integrasi eksternal lewat X-API-Key kalau nanti
  * ada pihak lain yang mau bikin tampilan sendiri dari data ini.
+ *
+ * SEMUA grafik (Tren, Status Pengiriman, Rasio Balasan, Pemakaian per
+ * Template, Pertumbuhan Kontak) ikut skop harian(tanggal pilihan) /
+ * bulanan(bulan pilihan) / tahunan(tahun pilihan) yang sama -- summary
+ * card di atas (Total Pesan, Jumlah Nomor, Jumlah Template) TETAP
+ * sepanjang masa, gak kepengaruh granularity.
  */
 export default function Dashboard() {
   const [overview, setOverview] = useState(null);
   const [status, setStatus] = useState("loading"); // "loading" | "ready" | "error"
   const [errorMessage, setErrorMessage] = useState("");
   const [granularity, setGranularity] = useState("daily");
+  // Dipakai pas granularity = "daily" (date-picker, default hari ini, dikunci
+  // cuma boleh tanggal di bulan berjalan -- lihat min/max di <input type="date">).
+  const [selectedDay, setSelectedDay] = useState(todayIso());
+  // Dipakai pas granularity = "monthly" (dropdown Januari-Desember, default bulan berjalan).
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getUTCMonth() + 1));
+  // Dipakai pas granularity = "yearly" (dropdown tahun, default tahun berjalan).
+  const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
 
   const { contacts, loading: contactsLoading } = useContacts();
   const { templates } = useTemplates();
 
-  async function loadOverview(nextGranularity = granularity) {
+  async function loadOverview(
+    nextGranularity = granularity,
+    nextDay = selectedDay,
+    nextMonth = selectedMonth,
+    nextYear = selectedYear
+  ) {
     setStatus("loading");
     try {
-      const data = await getAnalyticsOverviewApi(nextGranularity);
+      const data = await getAnalyticsOverviewApi(nextGranularity, { day: nextDay, month: nextMonth, year: nextYear });
       setOverview(data);
       setStatus("ready");
     } catch (error) {
@@ -81,7 +146,22 @@ export default function Dashboard() {
 
   function handleGranularityChange(next) {
     setGranularity(next);
-    loadOverview(next);
+    loadOverview(next, selectedDay, selectedMonth, selectedYear);
+  }
+
+  function handleDayChange(next) {
+    setSelectedDay(next);
+    loadOverview(granularity, next, selectedMonth, selectedYear);
+  }
+
+  function handleMonthChange(next) {
+    setSelectedMonth(next);
+    loadOverview(granularity, selectedDay, next, selectedYear);
+  }
+
+  function handleYearChange(next) {
+    setSelectedYear(next);
+    loadOverview(granularity, selectedDay, selectedMonth, next);
   }
 
   const totalMessages = useMemo(
@@ -131,6 +211,31 @@ export default function Dashboard() {
 
   const templateUsage = overview?.templateUsage ?? [];
 
+  // Caption kecil di atas grafik, biar jelas skop waktu yang lagi
+  // ditampilkan (tanggal pilihan / bulan+tahun pilihan / tahun pilihan).
+  const scopeLabel = useMemo(() => {
+    if (granularity === "daily") {
+      return new Date(`${selectedDay}T00:00:00Z`).toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+    }
+    if (granularity === "monthly") {
+      const monthLabel = MONTH_OPTIONS.find((m) => m.value === selectedMonth)?.label ?? "";
+      return `${monthLabel} ${selectedYear}`;
+    }
+    return selectedYear;
+  }, [granularity, selectedDay, selectedMonth, selectedYear]);
+
+  // Grafik "Tren Pengiriman Pesan" & "Pertumbuhan Kontak" punya titik yang
+  // beda-beda banyaknya (48 titik pas daily, sampai 31 titik pas monthly,
+  // 12 titik pas yearly) -- interval dibikin dinamis biar label sumbu-X
+  // gak numpuk pas daily.
+  const xAxisTickInterval = granularity === "daily" ? 3 : 0;
+
   const activeTemplateCount = useMemo(
     () => templates.filter((t) => !t.isDeleted).length,
     [templates]
@@ -147,19 +252,38 @@ export default function Dashboard() {
             <p className="text-sm text-gray-400">Rangkuman & tren aktivitas WhatsApp dari waktu ke waktu.</p>
           </div>
 
-          <div className="flex gap-1 rounded-full border border-gray-200 p-1">
-            {GRANULARITY_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => handleGranularityChange(option.value)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                  granularity === option.value ? "bg-brand text-white" : "text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 rounded-full border border-gray-200 p-1">
+              {GRANULARITY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleGranularityChange(option.value)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                    granularity === option.value ? "bg-brand text-white" : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {granularity === "daily" && (
+              <input
+                type="date"
+                value={selectedDay}
+                min={monthStartIso()}
+                max={todayIso()}
+                onChange={(e) => handleDayChange(e.target.value)}
+                className="cursor-pointer rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white outline-none hover:bg-brand-hover [color-scheme:dark]"
+              />
+            )}
+            {granularity === "monthly" && (
+              <FilterSelect options={MONTH_OPTIONS} value={selectedMonth} onChange={handleMonthChange} />
+            )}
+            {granularity === "yearly" && (
+              <FilterSelect options={YEAR_OPTIONS} value={selectedYear} onChange={handleYearChange} />
+            )}
           </div>
         </div>
 
@@ -181,11 +305,11 @@ export default function Dashboard() {
 
         {status === "ready" && (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ChartCard title="Tren Pengiriman Pesan" className="lg:col-span-2">
+            <ChartCard title="Tren Pengiriman Pesan" subtitle={scopeLabel} className="lg:col-span-2">
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={messageTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} interval={xAxisTickInterval} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Legend />
@@ -195,21 +319,25 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </ChartCard>
 
-            <ChartCard title="Status Pengiriman">
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={statusSlices} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
-                    {statusSlices.map((slice) => (
-                      <Cell key={slice.name} fill={slice.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+            <ChartCard title="Status Pengiriman" subtitle={scopeLabel}>
+              {statusSlices.length === 0 ? (
+                <EmptyChartNote />
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={statusSlices} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
+                      {statusSlices.map((slice) => (
+                        <Cell key={slice.name} fill={slice.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </ChartCard>
 
-            <ChartCard title="Rasio Balasan Approve/Reject">
+            <ChartCard title="Rasio Balasan Approve/Reject" subtitle={scopeLabel}>
               {replySlices.length === 0 ? (
                 <EmptyChartNote />
               ) : (
@@ -227,23 +355,27 @@ export default function Dashboard() {
               )}
             </ChartCard>
 
-            <ChartCard title="Pemakaian per Template" className="lg:col-span-2">
-              <ResponsiveContainer width="100%" height={Math.max(220, templateUsage.length * 40)}>
-                <BarChart data={templateUsage} layout="vertical" margin={{ left: 24 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <YAxis type="category" dataKey="template_wa" width={180} tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Jumlah Kirim" fill={TEMPLATE_BAR_COLOR} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <ChartCard title="Pemakaian per Template" subtitle={scopeLabel} className="lg:col-span-2">
+              {templateUsage.length === 0 ? (
+                <EmptyChartNote />
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(220, templateUsage.length * 40)}>
+                  <BarChart data={templateUsage} layout="vertical" margin={{ left: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                    <YAxis type="category" dataKey="template_wa" width={180} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Jumlah Kirim" fill={TEMPLATE_BAR_COLOR} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </ChartCard>
 
-            <ChartCard title="Pertumbuhan Jumlah Kontak Baru" className="lg:col-span-2">
+            <ChartCard title="Pertumbuhan Jumlah Kontak Baru" subtitle={scopeLabel} className="lg:col-span-2">
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={contactGrowth}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} interval={xAxisTickInterval} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Area type="monotone" dataKey="count" name="Kontak Baru" stroke="#1d6fe0" fill="#1d6fe0" fillOpacity={0.15} />
@@ -271,10 +403,13 @@ function SummaryCard({ icon: Icon, label, value, loading }) {
   );
 }
 
-function ChartCard({ title, className = "", children }) {
+function ChartCard({ title, subtitle, className = "", children }) {
   return (
     <div className={`rounded-2xl border border-gray-100 p-6 ${className}`}>
-      <h3 className="mb-4 text-lg font-semibold text-gray-900">{title}</h3>
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        {subtitle && <span className="text-xs font-medium text-gray-400">{subtitle}</span>}
+      </div>
       {children}
     </div>
   );
