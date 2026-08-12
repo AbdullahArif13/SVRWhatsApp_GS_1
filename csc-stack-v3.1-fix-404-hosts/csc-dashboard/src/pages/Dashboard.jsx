@@ -61,28 +61,54 @@ const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => {
   return { value: String(year), label: String(year) };
 });
 
-/** ISO date (YYYY-MM-DD, basis UTC) hari ini -- dipakai sebagai default & batas
- *  atas date-picker "Harian" (gak boleh pilih tanggal di masa depan). */
+// v3.14: FIX -- backend (services/analytics.js) SEKARANG menghitung semua
+// bucket/rentang tanggal eksplisit dalam WIB (UTC+7), bukan UTC lagi
+// (sebelumnya ini yang bikin jam di "Tren Pengiriman Pesan" & "Pertumbuhan
+// Kontak Baru" geser 7 jam dari jam yang sama persis ditampilkan di
+// "Riwayat Pengiriman"). Di FrontEnd, dua tempat SEPERTI INI juga perlu
+// konsisten pakai WIB, bukan `getUTC*()`/`timeZone: "UTC"` mentah:
+//   - Helper tanggal hari ini/awal bulan (buat default & batas date-picker
+//     "Harian") sekarang pakai jam LOKAL BROWSER (bukan UTC) -- asumsinya
+//     dashboard ini dibuka dari browser yang memang di-set WIB (sama
+//     seperti utils/formatDate.js dipakai di Riwayat Pengiriman/halaman
+//     lain, yang juga pakai jam lokal browser lewat toLocaleString).
+//   - formatBucketLabel() di bawah menggeser instant UTC dari backend
+//     +7 jam lebih dulu, BARU dibaca field UTC-nya sebagai jam-dinding WIB
+//     -- ini SENGAJA tidak ikut jam lokal browser (beda dari poin di
+//     atas), supaya grafik selalu tampil WIB apa pun timezone OS
+//     browsernya (jaga-jaga kalau ada laptop yang salah setting).
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** ISO date (YYYY-MM-DD) hari ini, basis WAKTU LOKAL BROWSER -- dipakai
+ *  sebagai default & batas atas date-picker "Harian". */
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-/** ISO date (YYYY-MM-DD) tanggal 1 bulan berjalan -- batas bawah date-picker
- *  "Harian", supaya user cuma bisa milih tanggal DI BULAN INI (gak nyebrang
- *  ke bulan/tahun lain). */
+/** ISO date (YYYY-MM-DD) tanggal 1 bulan berjalan (basis waktu lokal
+ *  browser) -- batas bawah date-picker "Harian", supaya user cuma bisa
+ *  milih tanggal DI BULAN INI (gak nyebrang ke bulan/tahun lain). */
 function monthStartIso() {
   const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
 }
 
 /**
  * Format label sumbu-X grafik tren sesuai granularity yang dipilih:
- *   - daily   : jam:menit slot 30 menit-an, misal "08.30" (tanggal pilihan)
+ *   - daily   : jam:menit slot 30 menit-an WIB, misal "08.30" (tanggal pilihan)
  *   - monthly : nama hari + tanggal, misal "Sen, 1" (bulan yang dipilih)
  *   - yearly  : nama bulan singkat, misal "Jan" (tahun yang dipilih)
  */
 function formatBucketLabel(isoDate, granularity) {
-  const date = new Date(isoDate);
+  // Geser +7 jam dulu, baru baca field UTC-nya sebagai jam-dinding WIB --
+  // lihat catatan WIB_OFFSET_MS di atas.
+  const date = new Date(new Date(isoDate).getTime() + WIB_OFFSET_MS);
   if (granularity === "yearly") return date.toLocaleDateString("id-ID", { month: "short", timeZone: "UTC" });
   if (granularity === "monthly") {
     return date.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", timeZone: "UTC" });

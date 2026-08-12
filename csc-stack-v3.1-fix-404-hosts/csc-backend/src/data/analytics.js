@@ -14,6 +14,33 @@ export function isValidGranularity(value) {
   return VALID_GRANULARITIES.has(value);
 }
 
+// v3.14: FIX -- semua bucket/rentang tanggal di bawah sebelumnya dihitung
+// pakai field UTC (Date.UTC, getUTCFullYear, dst), sedangkan Postgres
+// (SHOW TimeZone -> 'UTC') dan seluruh isi database ini memang disimpan &
+// dibaca sebagai UTC juga -- TAPI penggunanya di Indonesia (WIB, UTC+7,
+// TIDAK ada DST). Akibatnya jam di grafik "Tren Pengiriman Pesan" &
+// "Pertumbuhan Kontak Baru" geser 7 jam dari jam yang sama persis
+// ditampilkan di "Riwayat Pengiriman" (yang formatnya pakai jam LOKAL
+// browser lewat toLocaleString, lihat utils/formatDate.js FrontEnd).
+//
+// Perbaikannya: SEMUA hitungan "hari ini"/"bulan ini"/batas jam di sini
+// sekarang eksplisit dalam WIB, bukan UTC.
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** Instant UTC "sekarang", digeser +7 jam supaya field getUTC*() dari hasilnya
+ *  bisa dibaca LANGSUNG sebagai jam-dinding WIB (bukan UTC). */
+function nowAsWibWallClock() {
+  return new Date(Date.now() + WIB_OFFSET_MS);
+}
+
+/** Kebalikan dari trik di atas: dari "jam-dinding WIB" (dibangun via
+ *  Date.UTC(y, m, d, ...) yang field-nya sebenarnya WIB) balik ke instant
+ *  UTC ASLI yang benar (buat dikirim ke query Postgres / dijadikan ISO
+ *  string yang benar-benar merepresentasikan waktu itu). */
+function wibWallClockToUtcInstant(y, m, d, hh = 0, mm = 0) {
+  return new Date(Date.UTC(y, m, d, hh, mm) - WIB_OFFSET_MS);
+}
+
 /**
  * v3.13: Setiap granularity punya "skop waktu" yang jelas & bucket SQL
  * sendiri -- soalnya masing-masing scope-nya beda:
@@ -38,20 +65,25 @@ export function isValidGranularity(value) {
  * menyesuaikan skop harian/bulanan/tahunan yang sama.
  */
 function range(granularity, { day, month, year } = {}) {
-  const now = new Date();
+  // "now", tapi field-nya (getUTCFullYear/getUTCMonth/dst) dibaca sebagai
+  // jam-dinding WIB -- lihat nowAsWibWallClock() di atas.
+  const nowWib = nowAsWibWallClock();
 
   if (granularity === "daily") {
-    let target = now;
+    let y = nowWib.getUTCFullYear();
+    let m = nowWib.getUTCMonth();
+    let d = nowWib.getUTCDate();
+
     if (typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
       const [yy, mm, dd] = day.split("-").map(Number);
-      const candidate = new Date(Date.UTC(yy, mm - 1, dd));
-      // Kunci: tanggal yang dipilih HARUS di bulan & tahun berjalan --
-      // kalau tidak, abaikan & tetap pakai hari ini.
-      if (candidate.getUTCFullYear() === now.getUTCFullYear() && candidate.getUTCMonth() === now.getUTCMonth()) {
-        target = candidate;
+      // Kunci: tanggal yang dipilih HARUS di bulan & tahun WIB yang
+      // berjalan -- kalau tidak, abaikan & tetap pakai hari ini (WIB).
+      if (yy === y && mm - 1 === m) {
+        d = dd;
       }
     }
-    const start = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()));
+
+    const start = wibWallClockToUtcInstant(y, m, d);
     const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     const buckets = [];
     for (let i = 0; i < 48; i++) buckets.push(new Date(start.getTime() + i * 30 * 60 * 1000).toISOString());
@@ -59,10 +91,12 @@ function range(granularity, { day, month, year } = {}) {
   }
 
   if (granularity === "monthly") {
-    const y = Number.isInteger(year) ? year : now.getUTCFullYear();
-    const m = Number.isInteger(month) ? month - 1 : now.getUTCMonth(); // month: 1-12 dari FE
-    const start = new Date(Date.UTC(y, m, 1));
-    const end = new Date(Date.UTC(y, m + 1, 1));
+    const y = Number.isInteger(year) ? year : nowWib.getUTCFullYear();
+    const m = Number.isInteger(month) ? month - 1 : nowWib.getUTCMonth(); // month: 1-12 dari FE
+    const start = wibWallClockToUtcInstant(y, m, 1);
+    // Bulan berikutnya (JS Date.UTC otomatis "rollover" m+1=12 -> Januari
+    // tahun depan, dst -- tidak perlu ditangani manual).
+    const end = wibWallClockToUtcInstant(y, m + 1, 1);
     const daysInMonth = Math.round((end - start) / (24 * 60 * 60 * 1000));
     const buckets = [];
     for (let i = 0; i < daysInMonth; i++) buckets.push(new Date(start.getTime() + i * 24 * 60 * 60 * 1000).toISOString());
@@ -70,11 +104,11 @@ function range(granularity, { day, month, year } = {}) {
   }
 
   // yearly
-  const y = Number.isInteger(year) ? year : now.getUTCFullYear();
-  const start = new Date(Date.UTC(y, 0, 1));
-  const end = new Date(Date.UTC(y + 1, 0, 1));
+  const y = Number.isInteger(year) ? year : nowWib.getUTCFullYear();
+  const start = wibWallClockToUtcInstant(y, 0, 1);
+  const end = wibWallClockToUtcInstant(y + 1, 0, 1);
   const buckets = [];
-  for (let i = 0; i < 12; i++) buckets.push(new Date(Date.UTC(y, i, 1)).toISOString());
+  for (let i = 0; i < 12; i++) buckets.push(wibWallClockToUtcInstant(y, i, 1).toISOString());
   return { start, end, buckets, truncUnit: "month" };
 }
 
@@ -83,14 +117,28 @@ function fillEmptyBuckets(rowsByBucket, buckets, shape) {
   return buckets.map((key) => rowsByBucket.get(key) ?? { date: key, ...shape });
 }
 
-/** Ekspresi SQL untuk bucket waktu. 'daily' dipecah manual per 30 menit
- *  karena Postgres date_trunc() tidak punya opsi bawaan "30 minute". */
+/**
+ * Ekspresi SQL untuk bucket waktu -- SEMUA dihitung di zona WAKTU WIB
+ * ('Asia/Jakarta'), BUKAN UTC (lihat catatan WIB_OFFSET_MS di atas kenapa
+ * ini penting -- server Postgres-nya sendiri jalan di UTC, "created_at
+ * AT TIME ZONE 'Asia/Jakarta'" mengonversi ke jam-dinding WIB dulu SEBELUM
+ * di-truncate, baru "AT TIME ZONE 'Asia/Jakarta'" yang KEDUA di paling
+ * luar mengembalikannya jadi instant UTC yang benar lagi (supaya hasilnya
+ * tetap timestamptz yang valid, konsisten dibandingkan sama kolom lain).
+ *
+ * 'daily' dipecah manual per 30 menit karena Postgres date_trunc() tidak
+ * punya opsi bawaan "30 minute".
+ */
 function bucketExpr(granularity) {
   if (granularity === "daily") {
-    return `date_trunc('hour', created_at) + INTERVAL '30 min' * FLOOR(EXTRACT(MINUTE FROM created_at) / 30)`;
+    return `(date_trunc('hour', created_at AT TIME ZONE 'Asia/Jakarta')
+              + INTERVAL '30 min' * FLOOR(EXTRACT(MINUTE FROM created_at AT TIME ZONE 'Asia/Jakarta') / 30)
+             ) AT TIME ZONE 'Asia/Jakarta'`;
   }
-  if (granularity === "monthly") return `date_trunc('day', created_at)`;
-  return `date_trunc('month', created_at)`; // yearly
+  if (granularity === "monthly") {
+    return `date_trunc('day', created_at AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta'`;
+  }
+  return `date_trunc('month', created_at AT TIME ZONE 'Asia/Jakarta') AT TIME ZONE 'Asia/Jakarta'`; // yearly
 }
 
 /** Tren jumlah pesan per 30menit/hari/bulan (tergantung granularity), dipecah per status. */
