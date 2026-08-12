@@ -1,16 +1,4 @@
-/**
- * Dropdown filter bergaya pill hijau, dipakai di halaman Template dan
- * Riwayat Pengiriman.
- *
- * `options` boleh berupa:
- *   - array string, contoh: ["Aktif", "Nonaktif"]
- *   - array object { value, label }, contoh:
- *     [{ value: "all", label: "Semua Status" }]
- *
- * (Sebelumnya ada 2 komponen terpisah dengan nama sama persis di
- * Templates.jsx dan MessageHistory.jsx yang cuma beda di bentuk
- * `options` ini -- sekarang digabung jadi satu di sini.)
- */
+
 export default function FilterSelect({ options, value, onChange }) {
   const normalizedOptions = options.map((option) =>
     typeof option === "string" ? { value: option, label: option } : option

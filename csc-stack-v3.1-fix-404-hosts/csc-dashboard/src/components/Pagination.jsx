@@ -1,16 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-/**
- * Kontrol pagination generik. Dipasangkan dengan hook usePagination().
- *
- * Dua mode sesuai permintaan:
- *   1. Input "Data per halaman" -- user isi sendiri angkanya, lalu
- *      navigasi Sebelumnya/Berikutnya seperti biasa.
- *   2. Tombol "Tampilkan Semua" -- pagination dimatikan sementara,
- *      seluruh data (hasil filter/search yang lagi aktif) ditampilkan
- *      sekaligus dalam satu tabel.
- */
+
 export default function Pagination({
   page,
   pageSize,
@@ -23,19 +14,19 @@ export default function Pagination({
   onPageSizeChange,
   onToggleShowAll,
 }) {
-  // Buffer ketikan LOKAL, terpisah dari `pageSize` yang sebenarnya.
-  // Kalau langsung pakai `pageSize` sebagai value input, tiap kali user
-  // menghapus angka lama (input sempat kosong sesaat) nilainya otomatis
-  // "dipaksa" balik ke minimal 1 -- jadinya user tidak pernah bisa
-  // ngetik angka 2 digit+ (mis. mau ganti ke "20", tapi begitu dihapus
-  // sempat kosong -> balik ke "1" duluan -> ketikan berikutnya nempel
-  // jadi "120"). Dengan buffer ini, boleh sementara kosong/parsial
-  // selagi diketik, baru di-commit ke pagination pas user selesai
-  // (blur atau tekan Enter).
+  
+  
+  
+  
+  
+  
+  
+  
+  
   const [draft, setDraft] = useState(String(pageSize));
 
-  // Sinkronkan ulang buffer kalau pageSize berubah dari luar (mis. lewat
-  // navigasi halaman lain, atau reset), TAPI bukan tiap keystroke.
+  
+  
   useEffect(() => {
     setDraft(String(pageSize));
   }, [pageSize]);
@@ -43,7 +34,7 @@ export default function Pagination({
   function commitDraft() {
     const parsed = Number(draft);
     if (draft.trim() === "" || Number.isNaN(parsed) || parsed < 1) {
-      setDraft(String(pageSize)); // input tidak valid -- balikin ke nilai terakhir yang valid
+      setDraft(String(pageSize)); 
       return;
     }
     onPageSizeChange(parsed);
@@ -60,7 +51,7 @@ export default function Pagination({
       <span>{rangeLabel}</span>
 
       <div className="flex flex-wrap items-center gap-3">
-        {/* Mode 1: custom page size */}
+        
         <label className={`flex items-center gap-2 ${showAll ? "opacity-40" : ""}`}>
           <span>Data per halaman</span>
           <input
@@ -81,7 +72,7 @@ export default function Pagination({
           />
         </label>
 
-        {/* Mode 2: tampilkan semua */}
+        
         <button
           type="button"
           onClick={() => onToggleShowAll(!showAll)}
@@ -94,7 +85,7 @@ export default function Pagination({
           Tampilkan Semua
         </button>
 
-        {/* Navigasi halaman -- disembunyikan/dimatikan pas mode "Tampilkan Semua" */}
+        
         <div className={`flex items-center gap-1 ${showAll ? "opacity-40" : ""}`}>
           <button
             type="button"

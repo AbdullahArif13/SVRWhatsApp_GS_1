@@ -14,29 +14,17 @@ const ROLE_LABELS = {
   read_only: "Read Only",
 };
 
-// Admin cuma boleh bikin akun 'pengguna'/'read_only' -- Super Admin boleh
-// bikin role apa pun ("otorisasi penuh"). Lihat usersController.js untuk
-// validasi ASLI-nya (ini cuma membatasi pilihan di form).
+
+
+
 const ADMIN_CREATABLE_ROLES = ["pengguna", "read_only"];
 const ALL_ROLES = ["super_admin", "admin", "pengguna", "read_only"];
 
-/**
- * v3.11: popup "Manage User" -- dibuka dari Sidebar (tombol "Manage User"),
- * BUKAN halaman penuh (permintaan eksplisit: supaya tidak makan tempat).
- * Isinya:
- *   - Daftar semua akun dashboard (paginated, lihat usePagination.js).
- *   - Form "Tambah User" -- role yang bisa dipilih dibatasi sesuai role
- *     yang sedang login (Admin cuma boleh bikin 'pengguna', Super Admin
- *     boleh bikin role apa pun -- validasi ASLI tetap di backend, ini
- *     cuma supaya form-nya tidak menawarkan pilihan yang pasti ditolak).
- *   - Klik nama user -> buka UserActivityModal (nested popup) buat lihat
- *     semua yang pernah dia lakukan (create/update/delete Template,
- *     Kontak, Kirim Pesan, dst -- lihat data/activityLogs.js backend).
- */
+
 export default function ManageUsersModal({ onClose }) {
   const { role: myRole } = useAuth();
   const [users, setUsers] = useState([]);
-  const [status, setStatus] = useState("loading"); // "loading" | "ready" | "error"
+  const [status, setStatus] = useState("loading"); 
   const [errorMessage, setErrorMessage] = useState("");
   const [viewingUserId, setViewingUserId] = useState(null);
 

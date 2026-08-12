@@ -4,37 +4,21 @@ import { extractVariableNames } from "../../utils/templateEngine.js";
 import { API_BASE_URL } from "../../config.js";
 import ActiveToggle from "./ActiveToggle.jsx";
 
-/**
- * Popup detail template.
- *
- * Bisa dipakai untuk EDIT nama/isi template, menampilkan contoh perintah
- * `curl` yang bisa langsung di-copy, dan berisi beberapa aksi:
- *   - Switch Aktif/Nonaktif di header : sama seperti di tabel, langsung
- *                           toggle status begitu diklik.
- *   - "Simpan Perubahan"   : simpan perubahan nama/body/require_reply
- *                           (kalau ada), lalu tutup popup. TIDAK lagi
- *                           otomatis mengaktifkan template -- pakai
- *                           switch di atas untuk itu.
- *   - Icon tong sampah     : HAPUS template ini (SOFT DELETE -- tidak
- *                           ada yang dihapus permanen dari database).
- *                           Setelah ini, template pindah ke panel
- *                           Database dan cuma bisa dilihat/dipulihkan
- *                           lagi dari sana.
- */
+
 export default function TemplateDetailModal({ template, onClose }) {
   const { templates, editTemplate, activateTemplate, deactivateTemplate, softDeleteTemplate } =
     useTemplates();
 
-  // `template` (prop) adalah snapshot pas modal ini dibuka. Ambil versi
-  // TERBARU dari context supaya switch Aktif/Nonaktif di header modal ini
-  // langsung ke-update begitu diklik (tidak nunggu modal ditutup-buka lagi).
+  
+  
+  
   const liveTemplate = templates.find((t) => t.id === template.id) ?? template;
 
   const [name, setName] = useState(template.name);
   const [body, setBody] = useState(template.body ?? "");
   const [requireReply, setRequireReply] = useState(Boolean(template.requireReply));
-  // v3.7: parameter True/False "Aktifkan Penggunaan Foto" -- lihat
-  // CreateTemplate.jsx untuk penjelasan lengkap perilakunya.
+  
+  
   const [usePhoto, setUsePhoto] = useState(Boolean(template.usePhoto));
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -44,26 +28,26 @@ export default function TemplateDetailModal({ template, onClose }) {
 
   const variableNames = useMemo(() => extractVariableNames(body), [body]);
 
-  // Contoh curl dibuat otomatis dari nama template + variabel yang
-  // ditemukan di body-nya, sesuai kontrak JSON v3:
-  //  - "nama_wa" : field terpisah, nama kontak WA tujuan.
-  //  - "values"  : isi tiap {{variabel}}, termasuk {{nama}} kalau dipakai
-  //                di body (isinya boleh sama dengan "nama_wa", tapi
-  //                fungsinya beda -- "nama_wa" bukan buat isi body).
-  //
-  // Header X-API-Key WAJIB ada karena endpoint /api/send-message
-  // diproteksi (lihat BACKEND_API_KEY di csc-backend). Contoh curl di
-  // popup ini SELALU pakai referensi env var "$CSC_API_KEY", baik yang
-  // tampil di layar maupun yang di-copy ke clipboard -- komponen ini
-  // tidak lagi membaca/menyimpan key asli sama sekali.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   const buildCurl = useMemo(() => {
     const exampleValues = {};
     for (const varName of variableNames) {
       exampleValues[varName] =
         varName.toLowerCase() === "nama" ? "<isi_dengan_nama>" : `<isi ${varName}>`;
     }
-    // v3.7: kalau "Aktifkan Penggunaan Foto" nyala, values.foto WAJIB diisi
-    // saat template ini dipakai -- tambahkan ke contoh curl supaya jelas.
+    
+    
     if (usePhoto) {
       exampleValues.foto = "<url_gambar_jpg_atau_png>";
       exampleValues.keterangan = "<isi keterangan (opsional, jadi caption foto)>";
@@ -86,12 +70,12 @@ export default function TemplateDetailModal({ template, onClose }) {
   async function handleCopyCurl() {
     const text = buildCurl("$CSC_API_KEY");
 
-    // navigator.clipboard.writeText cuma tersedia di "secure context"
-    // (HTTPS, atau localhost) -- kalau dashboard diakses lewat HTTP biasa
-    // via IP LAN (bukan localhost/HTTPS), navigator.clipboard bisa
-    // undefined sama sekali. Fallback ke cara lama (textarea tersembunyi +
-    // document.execCommand) yang TIDAK butuh secure context, biar tetap
-    // bisa copy walau di HTTP.
+    
+    
+    
+    
+    
+    
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(text);
@@ -99,7 +83,7 @@ export default function TemplateDetailModal({ template, onClose }) {
         setTimeout(() => setCopied(false), 1500);
         return;
       } catch {
-        // lanjut ke fallback di bawah, jangan langsung nyerah
+        
       }
     }
 
@@ -121,10 +105,10 @@ export default function TemplateDetailModal({ template, onClose }) {
     }
   }
 
-  // Tombol "Simpan Perubahan": simpan perubahan nama/body/require_reply
-  // kalau ada. TIDAK lagi otomatis mengaktifkan template -- status
-  // Aktif/Nonaktif sekarang diatur lewat switch di header (lihat
-  // handleToggleActive di bawah), independen dari simpan-edit ini.
+  
+  
+  
+  
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -145,8 +129,8 @@ export default function TemplateDetailModal({ template, onClose }) {
     }
   }
 
-  // Switch Aktif/Nonaktif di header modal -- sama seperti di tabel,
-  // langsung toggle status begitu diklik, TIDAK menutup modal.
+  
+  
   async function handleToggleActive() {
     setToggling(true);
     setError(null);
@@ -163,9 +147,9 @@ export default function TemplateDetailModal({ template, onClose }) {
     }
   }
 
-  // Icon tong sampah -- HAPUS (soft delete). Template TIDAK dihapus dari
-  // database, cuma is_deleted jadi true dan berpindah dari tabel utama ke
-  // panel Database, dari mana template ini bisa dipulihkan lagi kapan saja.
+  
+  
+  
   async function handleSoftDelete() {
     const confirmed = window.confirm(
       `Hapus template "${template.name}"? Template ini TIDAK akan dihapus permanen dari database -- cuma dipindah ke panel "Database" dan masih bisa dipulihkan lagi kapan saja.`
@@ -234,8 +218,7 @@ export default function TemplateDetailModal({ template, onClose }) {
           </button>
         </div>
 
-        {/* v3.7: toggle "Aktifkan Penggunaan Foto" -- lihat CreateTemplate.jsx
-            untuk penjelasan lengkap perilakunya (values.foto/keterangan). */}
+        
         <div className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">Aktifkan Penggunaan Foto</p>

@@ -4,9 +4,9 @@ import { usePagination } from "../hooks/usePagination.js";
 import { formatTimestamp } from "../utils/formatDate.js";
 import Pagination from "./Pagination.jsx";
 
-// Label ramah-baca untuk kolom `action` + `entity_type` di activity_logs
-// (lihat data/activityLogs.js backend) -- dipetakan di sini (bukan
-// hardcode di backend) supaya labelnya bisa diubah bebas tanpa migration.
+
+
+
 const ACTION_LABELS = {
   create: "Membuat",
   update: "Mengubah",
@@ -36,15 +36,11 @@ function describeActivity(activity) {
   return detailName ? `${action} ${entity} "${detailName}"` : `${action} ${entity}`;
 }
 
-/**
- * v3.11: popup "Aktivitas User" -- dibuka dengan klik nama user di popup
- * Manage User. Menampilkan SEMUA aksi yang pernah dia lakukan lintas
- * entitas (Template, Kontak, Kirim Pesan, User, Sesi), terbaru duluan.
- */
+
 export default function UserActivityModal({ userId, onClose }) {
   const [user, setUser] = useState(null);
   const [activities, setActivities] = useState([]);
-  const [status, setStatus] = useState("loading"); // "loading" | "ready" | "error"
+  const [status, setStatus] = useState("loading"); 
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {

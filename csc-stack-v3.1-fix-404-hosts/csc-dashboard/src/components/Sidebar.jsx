@@ -4,16 +4,7 @@ import SidebarButton from "./SidebarButton.jsx";
 import ManageUsersModal from "./ManageUsersModal.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-/**
- * v3.12: menu PER-ROLE (4 role total) --
- *   - 'read_only'  : CUMA "Dashboard", tidak ada menu lain sama sekali.
- *   - 'pengguna'    : Dashboard + Tambah Kontak/Template, Chat, Riwayat
- *                     Pengiriman (operator biasa -- TIDAK bisa Manage
- *                     User/Sesi Login).
- *   - 'admin' & 'super_admin' : semua menu 'pengguna' DITAMBAH "Sesi
- *     Login" & "Manage User" (buka POPUP, bukan halaman baru -- lihat
- *     ManageUsersModal.jsx).
- */
+
 export default function Sidebar() {
   const { role } = useAuth();
   const [showManageUsers, setShowManageUsers] = useState(false);

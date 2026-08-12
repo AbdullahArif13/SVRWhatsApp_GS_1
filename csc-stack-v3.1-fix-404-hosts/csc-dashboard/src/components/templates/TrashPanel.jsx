@@ -1,14 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTemplates } from "../../context/TemplatesContext.jsx";
 
-/**
- * Panel "Database" -- daftar template yang sudah DIHAPUS (soft delete).
- * Ini BUKAN tempat sampah permanen: tidak ada baris yang pernah dihapus
- * sungguhan dari database, cuma disembunyikan dari tabel utama. Template
- * yang cuma di-nonaktifkan (bukan dihapus) TETAP tampil di tabel utama,
- * TIDAK muncul di sini. Tiap baris di sini punya tombol "Gunakan Kembali"
- * buat mengeluarkannya lagi dari Database.
- */
+
 export default function TrashPanel({ onClose }) {
   const { templates, restoreTemplate } = useTemplates();
   const [restoringId, setRestoringId] = useState(null);

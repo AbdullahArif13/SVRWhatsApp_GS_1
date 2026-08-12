@@ -1,17 +1,5 @@
-// v3.2: setiap pesan masuk (event "message" dari webhook GOWA) dicatat di
-// sini SEBAGAI AUDIT TRAIL MENTAH -- terlepas dari apakah itu balasan
-// Approve/Reject yang valid, balasan lain, atau bahkan pesan baru (bukan
-// balasan sama sekali). Dipakai untuk fitur Approve/Reject (mencocokkan ke
-// message_logs lewat replied_to_id), tapi juga berguna sebagai log/riwayat
-// "Received Message" secara umum.
-
 import { pool } from "../db.js";
 
-/**
- * Simpan satu pesan masuk. `matchedMessageLogId` diisi kalau pesan ini
- * berhasil dicocokkan sebagai balasan ke salah satu baris di message_logs
- * (lewat replied_to_id <-> provider_message_id), null kalau tidak.
- */
 export async function addReceivedMessage({
   waMessageId,
   chatId,
@@ -31,7 +19,6 @@ export async function addReceivedMessage({
   return rows[0];
 }
 
-/** Riwayat pesan masuk, terbaru dulu. Bisa dipakai untuk halaman "Received Message" di dashboard. */
 export async function listReceivedMessages(limit = 200) {
   const { rows } = await pool.query(
     "SELECT * FROM received_messages ORDER BY created_at DESC LIMIT $1",

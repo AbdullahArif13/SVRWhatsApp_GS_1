@@ -26,7 +26,7 @@ export default function TopBar({ onToggleSidebar }) {
       </div>
       <span className="text-lg font-semibold tracking-wide text-gray-900">CSC_IT_GS</span>
 
-      {/* v3.10: username + tombol logout, didorong ke kanan. */}
+      
       <div className="ml-auto flex items-center gap-3">
         {username && <span className="text-sm text-gray-500">{username}</span>}
         <button

@@ -1,14 +1,7 @@
 import { XCircle } from "lucide-react";
 import { formatTimestamp } from "../../utils/formatDate.js";
 
-/**
- * Popup KHUSUS ditampilkan begitu badge "Reject" di tabel Riwayat
- * Pengiriman diklik -- fokusnya nunjukin ALASAN Reject-nya (kalau user
- * menuliskannya, lihat replyParser.js di backend), soalnya itu yang
- * paling penting buat ditindaklanjuti ("Reject, karena maskernya ada
- * yang rusak" dst). Reject TANPA alasan juga ditampilkan jelas sebagai
- * "tanpa alasan", bukan dianggap error.
- */
+
 export default function RejectReasonModal({ log, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>

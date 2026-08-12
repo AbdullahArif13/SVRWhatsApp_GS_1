@@ -1,21 +1,5 @@
-// Riwayat setiap request yang masuk ke POST /api/send-message -- baik yang
-// berhasil maupun yang gagal -- supaya FrontEnd bisa menampilkan "ke mana
-// saja arah dari sistem permintaan ke orang yang dituju".
-//
-// v3.2: PINDAH dari in-memory (array biasa, hilang tiap restart) ke tabel
-// `message_logs` di PostgreSQL, karena sekarang baris ini juga jadi
-// "jangkar" fitur Approve/Reject -- begitu user membalas pesan WA, GOWA
-// mengirim webhook berisi `replied_to_id` (ID pesan yang dibalas), dan kita
-// perlu mencocokkannya ke `provider_message_id` di sini WALAU backend
-// sempat restart di antara pesan terkirim & balasannya datang.
-
 import { pool } from "../db.js";
 
-/**
- * Kandidat nama key di dalam `values` yang kemungkinan berisi nama
- * penerima pesan. Dicek case-insensitive, karena nama variabel bisa beda
- * antar template (mis. {{nama}} vs {{Nama_Penerima}}).
- */
 const RECIPIENT_NAME_KEYS = ["nama", "name", "penerima", "recipient", "recipient_name", "nama_penerima"];
 
 function guessRecipientName(values = {}) {
@@ -36,14 +20,6 @@ function mapRow(row) {
   };
 }
 
-/**
- * Simpan permintaan kirim pesan ke ANTRIAN (status 'antri'), SEBELUM
- * beneran dicoba dikirim ke GOWA. Dipanggil queueService.enqueueMessage()
- * begitu template & values sudah divalidasi dan final_message sudah
- * dirender. Baris ini nanti di-UPDATE oleh queueService.processNext()
- * (lihat updateMessageLogResult di bawah) begitu giliran pesan ini
- * diproses sesuai rate limit antrian.
- */
 export async function addQueuedMessageLog({
   template_wa,
   no_wa,
@@ -73,11 +49,6 @@ export async function addQueuedMessageLog({
   return mapRow(rows[0]);
 }
 
-/**
- * Update baris ANTRIAN begitu queueService SELESAI mencoba mengirimnya
- * ke GOWA (berhasil atau gagal). Dipanggil dari queueService.processNext(),
- * BUKAN langsung dari messageController.js.
- */
 export async function updateMessageLogResult(id, { status, providerMessageId = null, errorMessage = null }) {
   const { rows } = await pool.query(
     `UPDATE message_logs
@@ -113,20 +84,6 @@ export async function updateMessageLogResult(id, { status, providerMessageId = n
   return mapRow(rows[0] ?? null);
 }
 
-/**
- * { id, template_wa } baris yang masih berstatus 'antri', urut dari yang
- * paling lama. Dipakai queueService.initQueueFromDatabase() untuk
- * menyusun ulang antrian di memori pas backend baru nyala lagi (mis.
- * habis restart), supaya pesan yang belum sempat diproses sebelumnya
- * tidak hilang begitu saja -- datanya kan sudah aman di DB, cuma "urutan
- * antrian" di RAM-nya yang perlu disusun ulang.
- *
- * v3.11: ikut membawa `template_wa` (bukan cuma `id` seperti sebelumnya)
- * karena queueService.js sekarang perlu tahu template dari tiap item
- * antrian untuk menerapkan rate limit PER TEMPLATE (lihat komentar
- * TEMPLATE_RATE_LIMIT_PER_MINUTE di queueService.js) tanpa harus query DB
- * lagi satu-satu pas menyusun ulang antrian.
- */
 export async function listQueuedMessageLogQueueEntries() {
   const { rows } = await pool.query(
     "SELECT id, template_wa FROM message_logs WHERE status = 'antri' ORDER BY created_at ASC"
@@ -134,23 +91,16 @@ export async function listQueuedMessageLogQueueEntries() {
   return rows.map((row) => ({ id: row.id, template_wa: row.template_wa }));
 }
 
-/** Satu baris riwayat berdasarkan id -- dipakai worker antrian & endpoint polling status. */
 export async function findMessageLogById(id) {
   const { rows } = await pool.query("SELECT * FROM message_logs WHERE id = $1", [id]);
   return mapRow(rows[0] ?? null);
 }
 
-/** Mengambil seluruh riwayat, terbaru lebih dulu. Dipakai GET /api/messages. */
 export async function listMessageLogs() {
   const { rows } = await pool.query("SELECT * FROM message_logs ORDER BY created_at DESC");
   return rows.map(mapRow);
 }
 
-/**
- * Cari satu baris kiriman berdasarkan provider_message_id (ID pesan dari
- * GOWA). Dipakai webhookController.js untuk mencocokkan `replied_to_id`
- * dari balasan user ke kiriman template mana ia membalas.
- */
 export async function findMessageLogByProviderMessageId(providerMessageId) {
   if (!providerMessageId) return null;
   const { rows } = await pool.query(
@@ -160,16 +110,6 @@ export async function findMessageLogByProviderMessageId(providerMessageId) {
   return mapRow(rows[0] ?? null);
 }
 
-/**
- * Set hasil Approve/Reject (atau balasan tidak valid, tetap "menunggu")
- * untuk satu baris kiriman. Dipanggil webhookController.js begitu balasan
- * user berhasil dicocokkan & di-parse.
- *
- * `replyReason` : alasan Reject (kalau user menuliskannya, mis. "Reject,
- *                 karena maskernya ada yang rusak" -> reason "maskernya
- *                 ada yang rusak"). null kalau Reject tanpa alasan, atau
- *                 kalau replyStatus = "approve" (alasan tidak relevan).
- */
 export async function setMessageLogReply(id, { replyStatus, replyRawText, replyReason = null }) {
   const { rows } = await pool.query(
     `UPDATE message_logs

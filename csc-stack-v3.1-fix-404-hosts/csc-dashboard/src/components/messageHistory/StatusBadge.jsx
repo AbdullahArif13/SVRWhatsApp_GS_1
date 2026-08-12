@@ -1,6 +1,6 @@
-// v3.4: sekarang ada 3 status, bukan cuma 2 -- 'antri' dipakai selama
-// pesan masih menunggu giliran di queueService.js, sebelum beneran
-// dicoba dikirim ke GOWA (jadi belum tentu 'terkirim' ataupun 'gagal').
+
+
+
 const STYLES = {
   terkirim: "bg-green-100 text-green-600",
   gagal: "bg-red-100 text-red-500",
